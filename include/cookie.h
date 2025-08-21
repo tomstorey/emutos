@@ -61,6 +61,7 @@ struct cookie {
 #define MCH_ROBERTS7531 0x80000300L
 #define MCH_MEGA_68000 0x80000400L
 #define MCH_DDRAIG68K  0x80000500L
+#define MCH_COMET68K  0x80000600L
 
 /*
  * values of _VDO cookie

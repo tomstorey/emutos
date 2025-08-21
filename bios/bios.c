@@ -322,6 +322,14 @@ static void bios_init(void)
     if (has_duart) boot_status |= DUART_AVAILABLE;
 #endif
 
+#if CONF_WITH_NS16C2552
+    if (has_ns16c2552)
+    {
+        KDEBUG(("ns16c2552_init()\n"));
+        ns16c2552_init();
+    }
+#endif /* CONF_WITH_NS16C2552 */
+
     /*
      * Initialize the screen mode
      * Must be done before calling linea_init().
@@ -441,6 +449,10 @@ static void bios_init(void)
 #if CONF_WITH_DUART
     if (has_duart)
         boot_status |= DUART_AVAILABLE; /* track process */
+#endif
+#if CONF_WITH_NS16C2552
+    if (has_ns16c2552)
+        boot_status |= NS16C2552_AVAILABLE; /* track process */
 #endif
 
     /*

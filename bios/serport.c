@@ -22,6 +22,7 @@
 #include "mfp.h"
 #include "scc.h"
 #include "duart68681.h"
+#include "ns16c2552.h"
 #include "serport.h"
 #include "string.h"
 #include "tosvars.h"
@@ -83,6 +84,20 @@ static LONG bcostatDUARTB(void);
 static ULONG rsconfDUARTB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
 #endif /* CONF_WITH_DUART_CHANNEL_B */
 #endif /* CONF_WITH_DUART */
+
+#if CONF_WITH_NS16C2552
+static LONG bconstatA(void);
+static LONG bconinA(void);
+static LONG bcostatA(void);
+static LONG bconoutA(WORD,WORD);
+static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
+
+static LONG bconstatB(void);
+static LONG bconinB(void);
+static LONG bcostatB(void);
+static LONG bconoutB(WORD,WORD);
+static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
+#endif /* CONF_WITH_NS16C2552 */
 
 /*
  * global variables
@@ -154,6 +169,16 @@ static UBYTE ibufTT[RS232_BUFSIZE], obufTT[RS232_BUFSIZE];
 static const MAPTAB maptable_mfp_tt =
     { bconstatTT, bconinTT, bcostatTT, bconoutTT, rsconfTT, &iorecTT };
 #endif  /* CONF_WITH_TT_MFP */
+
+#if CONF_WITH_NS16C2552
+static EXT_IOREC iorecA, iorecB;
+static UBYTE ibufA[RS232_BUFSIZE], obufA[RS232_BUFSIZE];
+static UBYTE ibufB[RS232_BUFSIZE], obufB[RS232_BUFSIZE];
+static const MAPTAB maptable_port_a =
+    { bconstatA, bconinA, bcostatA, bconoutA, rsconfA, &iorecA };
+static const MAPTAB maptable_port_b =
+    { bconstatB, bconinB, bcostatB, bconoutB, rsconfB, &iorecB };
+#endif  /* CONF_WITH_NS16C2552 */
 
 #if CONF_WITH_MFP_RS232
 struct mfp_rs232_table {
@@ -1425,6 +1450,103 @@ static ULONG rsconfDUARTB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WO
 
 #endif /* CONF_WITH_DUART */
 
+#if CONF_WITH_NS16C2552
+void ns16c2552_init(void)
+{
+    struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
+    struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);
+    UBYTE *dll = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLL_REG);
+    UBYTE *dlm = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLM_REG);
+
+    lcr->WLEN = 3;           /* 8 bits per byte */
+    lcr->SLEN = 0;           /* 1 stop bit */
+    lcr->PEN = 0;            /* Parity disabled */
+
+    lcr->DLAB = 1;           /* Access divisor registers */
+
+    *dll = 4;                /* 7.3728MHz / 16 / 4 = 115200 baud */
+    *dlm = 0;
+
+    lcr->DLAB = 0;           /* Access divisor registers */
+
+    fcr->u8 = 0x7;           /* Reset FIFOs, enable TX and RX */
+}
+
+/*
+ * SCC port A i/o routines
+ */
+static LONG bconstatA(void)
+{
+    return bconstat_iorec(&iorecA);
+}
+
+static LONG bconinA(void)
+{
+    return bconin_iorec(&iorecA);
+}
+
+static LONG bcostatA(void)
+{
+    IOREC *out = &iorecA.out;
+
+    /* set the status according to buffer availability */
+    return (out->head == incr_tail(out)) ? 0L : -1L;
+}
+
+static LONG bconoutA(WORD dev, WORD b)
+{
+    return 1L;
+}
+
+/*
+ * SCC port B i/o routines
+ */
+static LONG bconstatB(void)
+{
+    return bconstat_iorec(&iorecB);
+}
+
+static LONG bconinB(void)
+{
+    return bconin_iorec(&iorecB);
+}
+
+/*
+ * Just like the MFP, when debug output is via the SCC serial port
+ * (e.g. on a Falcon), using interrupts can cause complications.
+ * So we avoid using interrupts in that situation.
+ */
+static LONG bcostatB(void)
+{
+    IOREC *out = &iorecB.out;
+
+    /* set the status according to buffer availability */
+    return (out->head == incr_tail(out)) ? 0L : -1L;
+}
+
+/* note that bconoutB() is global to support SCC_DEBUG_PRINT */
+LONG bconoutB(WORD dev, WORD b)
+{
+   return 1L;
+}
+static ULONG rsconf_ns16c2552(void *port,EXT_IOREC *iorec,WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+{
+    ULONG old = 0;
+
+    return old;
+}
+
+static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+{
+    return rsconf_ns16c2552(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
+}
+
+static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+{
+    return rsconf_ns16c2552(NULL,&iorecB,baud,ctrl,ucr,rsr,tsr,scr);
+}
+#endif /* CONF_WITH_NS16C2552 */
+
 #if BCONMAP_AVAILABLE
 static ULONG rsconf_dummy(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
@@ -1497,6 +1619,15 @@ static void init_bconmap(void)
 #endif
     }
 #endif
+
+#if CONF_WITH_NS16C2552
+    if (has_ns16c2552) {
+        memcpy(&maptable[1],&maptable_port_b,sizeof(MAPTAB));
+        memcpy(&maptable[2],&maptable_port_a,sizeof(MAPTAB));
+
+        bconmap_root.maptabsize = 3;
+    }
+#endif /* CONF_WITH_NS16C2552 */
 
     /* set up to use mapped device values */
     maptabptr = &maptable[bconmap_root.mapped_device-BCONMAP_START_HANDLE];
@@ -1576,6 +1707,15 @@ void init_serport(void)
 #endif
     }
 #endif /* CONF_WITH_DUART */
+
+#if CONF_WITH_NS16C2552
+    memcpy(&iorecA,&iorec_init,sizeof(EXT_IOREC));
+    iorecA.in.buf = ibufA;
+    iorecA.out.buf = obufA;
+    memcpy(&iorecB,&iorec_init,sizeof(EXT_IOREC));
+    iorecB.in.buf = ibufB;
+    iorecB.out.buf = obufB;
+#endif /* CONF_WITH_NS16C2552 */
 
 #if BCONMAP_AVAILABLE
     memcpy(&iorec_dummy,&iorec_init,sizeof(EXT_IOREC));

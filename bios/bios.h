@@ -88,5 +88,6 @@ extern WORD boot_status;
 #define SCC_AVAILABLE   0x08
 #define CHARDEV_AVAILABLE 0x10
 #define DUART_AVAILABLE 0x20
+#define NS16C2552_AVAILABLE 0x40
 
 #endif /* BIOS_H */

@@ -66,6 +66,10 @@ extern int has_scc;
 extern int has_duart;
 #endif
 
+#if CONF_WITH_NS16C2552
+extern int has_ns16c2552;
+#endif
+
 #if CONF_WITH_VME
 extern int has_vme;
   #define HAS_VME has_vme

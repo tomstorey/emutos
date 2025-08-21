@@ -40,10 +40,17 @@ OUTPUT_FORMAT(binary)
 # define ROM_ORIGIN 0x00F80000
 #elif defined(MACHINE_DDRAIG68K)
 # define ROM_ORIGIN 0x00F80000
+#elif defined(MACHINE_COMET68K)
+# define ROM_ORIGIN 0x00300000
+# define RAM_LENGTH 3M
 #elif defined(MACHINE_ROBERTS7531)
 # define ROM_ORIGIN 0x700000
 #else
 # define ROM_ORIGIN 0x00e00000
+#endif
+
+#ifndef RAM_LENGTH
+# define RAM_LENGTH 14M
 #endif
 
 /* Always assume there is a lot of ROM space, so the link will always succeed.
@@ -59,7 +66,7 @@ OUTPUT_FORMAT(binary)
  */
 MEMORY
 {
-    stram : ORIGIN = 0x00000000, LENGTH = 14M
+    stram : ORIGIN = 0x00000000, LENGTH = RAM_LENGTH
 #if !EMUTOS_LIVES_IN_RAM
     rom : ORIGIN = ROM_ORIGIN, LENGTH = ROM_LENGTH
 #endif

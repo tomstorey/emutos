@@ -216,6 +216,17 @@ static void detect_duart(void)
 
 #endif /* CONF_WITH_DUART */
 
+#if CONF_WITH_NS16C2552
+int has_ns16c2552;
+
+static void detect_ns16c2552(void)
+{
+    has_ns16c2552 = 1;
+
+    KDEBUG(("has_ns16c2552 = %d\n", has_ns16c2552));
+}
+#endif /* CONF_WITH_NS16C2552 */
+
 #if CONF_WITH_VME
 
 int has_vme;
@@ -424,6 +435,8 @@ static void setvalue_mch(void)
     cookie_mch = MCH_ROBERTS7531;
 #elif defined(MACHINE_DDRAIG68K)
     cookie_mch = MCH_DDRAIG68K;
+#elif defined(MACHINE_COMET68K)
+    cookie_mch = MCH_COMET68K;
 #else
     cookie_mch = MCH_NOHARD;
 #endif /* CONF_ATARI_HARDWARE */
@@ -599,6 +612,10 @@ void machine_detect(void)
 #if CONF_WITH_DUART
     if (!IS_ARANYM)
         detect_duart();
+#endif
+#if CONF_WITH_NS16C2552
+    if (!IS_ARANYM)
+        detect_ns16c2552();
 #endif
 #if CONF_WITH_VME
     if (!IS_ARANYM)
@@ -869,6 +886,8 @@ static const char * guess_machine_name(void)
         return "MEGA 68000";
     case MCH_DDRAIG68K:
         return "DDRAIG68K";
+    case MCH_COMET68K:
+        return "COMET68k";
     default:
         return "unknown";
     }
@@ -895,6 +914,8 @@ const char * machine_name(void)
     return "Tiny68K";
 #elif defined(MACHINE_DDRAIG68K)
     return "DDRAIG68K";
+#elif defined(MACHINE_COMET68K)
+    return "COMET68k";
 #else
     return guess_machine_name();
 #endif
