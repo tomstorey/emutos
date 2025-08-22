@@ -210,6 +210,12 @@ extern PFVOID vbl_list[8]; /* Default array for vblqueue */
 
 static void bios_init(void)
 {
+#if defined(MACHINE_COMET68K)
+    /* Blank the debug display */
+    CHECKPOINT(0);
+    CHECKPOINT(0);
+#endif
+
     KDEBUG(("bios_init()\n"));
 
     /* initialize Native Features, if available
@@ -451,8 +457,9 @@ static void bios_init(void)
         boot_status |= DUART_AVAILABLE; /* track process */
 #endif
 #if CONF_WITH_NS16C2552
-    if (has_ns16c2552)
+    if (has_ns16c2552) {
         boot_status |= NS16C2552_AVAILABLE; /* track process */
+	}
 #endif
 
     /*

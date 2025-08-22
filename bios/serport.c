@@ -1467,67 +1467,89 @@ void ns16c2552_init(void)
     *dll = 4;                /* 7.3728MHz / 16 / 4 = 115200 baud */
     *dlm = 0;
 
-    lcr->DLAB = 0;           /* Access divisor registers */
+    lcr->DLAB = 0;
 
     fcr->u8 = 0x7;           /* Reset FIFOs, enable TX and RX */
+
+	*(UBYTE *)(NS16C2552_BASE + NS16C2552_THR_REG) = 'B';
 }
 
 /*
- * SCC port A i/o routines
+ * NS16C2552 port A i/o routines
  */
 static LONG bconstatA(void)
 {
+	CHECKPOINT(0xA000);
+
     return bconstat_iorec(&iorecA);
 }
 
 static LONG bconinA(void)
 {
+	CHECKPOINT(0xA001);
+
     return bconin_iorec(&iorecA);
 }
 
 static LONG bcostatA(void)
 {
-    IOREC *out = &iorecA.out;
+	CHECKPOINT(0xA002);
 
-    /* set the status according to buffer availability */
-    return (out->head == incr_tail(out)) ? 0L : -1L;
+    struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_LSR_REG);
+
+	return (lsr->THRE) ? -1L : 0L;
 }
 
 static LONG bconoutA(WORD dev, WORD b)
 {
-    return 1L;
+	CHECKPOINT(0xA003);
+
+	/* Wait for the THR to be empty */
+	while (!bcostatA());
+
+	/* Send the byte */
+	*(UBYTE *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_THR_REG) = (UBYTE)b;
+
+	return 0L;
 }
 
 /*
- * SCC port B i/o routines
+ * NS16C2552 port B i/o routines
  */
 static LONG bconstatB(void)
 {
+	CHECKPOINT(0xB000);
+
     return bconstat_iorec(&iorecB);
 }
 
 static LONG bconinB(void)
 {
+	CHECKPOINT(0xB001);
+
     return bconin_iorec(&iorecB);
 }
 
-/*
- * Just like the MFP, when debug output is via the SCC serial port
- * (e.g. on a Falcon), using interrupts can cause complications.
- * So we avoid using interrupts in that situation.
- */
 static LONG bcostatB(void)
 {
-    IOREC *out = &iorecB.out;
+	CHECKPOINT(0xB002);
 
-    /* set the status according to buffer availability */
-    return (out->head == incr_tail(out)) ? 0L : -1L;
+    struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_LSR_REG);
+
+	return (lsr->THRE) ? -1L : 0L;
 }
 
-/* note that bconoutB() is global to support SCC_DEBUG_PRINT */
 LONG bconoutB(WORD dev, WORD b)
 {
-   return 1L;
+	CHECKPOINT(0xB003);
+
+	/* Wait for the THR to be empty */
+	while (!bcostatB());
+
+	/* Send the byte */
+	*(UBYTE *)(NS16C2552_BASE + NS16C2552_THR_REG) = (UBYTE)b;
+
+	return 0L;
 }
 static ULONG rsconf_ns16c2552(void *port,EXT_IOREC *iorec,WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
@@ -1538,12 +1560,30 @@ static ULONG rsconf_ns16c2552(void *port,EXT_IOREC *iorec,WORD baud, WORD ctrl, 
 
 static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
+	CHECKPOINT(0xA004);
+
     return rsconf_ns16c2552(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
 }
 
 static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
+	CHECKPOINT(0xB004);
+
     return rsconf_ns16c2552(NULL,&iorecB,baud,ctrl,ucr,rsr,tsr,scr);
+}
+
+void ns16c2552_interrupt_ch_a(ULONG priority)
+{
+	CHECKPOINT(0xA005);
+
+	(void)priority;
+}
+
+void ns16c2552_interrupt_ch_b(ULONG priority)
+{
+	CHECKPOINT(0xB005);
+
+	(void)priority;
 }
 #endif /* CONF_WITH_NS16C2552 */
 
@@ -1626,6 +1666,7 @@ static void init_bconmap(void)
         memcpy(&maptable[2],&maptable_port_a,sizeof(MAPTAB));
 
         bconmap_root.maptabsize = 3;
+		bconmap_root.mapped_device = 1;
     }
 #endif /* CONF_WITH_NS16C2552 */
 

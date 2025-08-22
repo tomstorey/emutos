@@ -13,8 +13,16 @@
 #define NS16C2552_SCR_REG 7             /* Scratch Register (r/w) */
 
 #define NS16C2552_DLL_REG 0             /* LSB of divisor (r/w) */
-#define NS16C2552_DLM_REG 0x1           /* MSB of divisor (r/w) */
-#define NS16C2552_AFR_REG 0x2           /* Alternate Function Register (r/w) */
+#define NS16C2552_DLM_REG 1             /* MSB of divisor (r/w) */
+#define NS16C2552_AFR_REG 2             /* Alternate Function Register (r/w) */
+
+#if defined(MACHINE_COMET68K)
+/* In a COMET68k machine, the on-board 16C2552 UART is accessible in a contiguous address space - it is not necessary
+ * to access the registers on alternate bytes, therefore channel A is only offset 8 bytes from channel B. */
+#define NS16C2552_CHA_OFFSET 8
+#else /* defined(MACHINE_COMET68K) */
+#define NS16C2552_CHA_OFFSET 16
+#endif
 
 struct ns16c2552_ier {
     union {
@@ -168,4 +176,4 @@ struct nc16c2552_afr {
     };
 };
 
-#endif //NS16C2552_H
+#endif /* NS16C2552_H */
