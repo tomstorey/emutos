@@ -121,8 +121,4 @@ void sccb_tx_interrupt(void);
 void sccb_es_interrupt(void);
 #endif
 
-#if CONF_WITH_NS16C2552
-void ns16c2552_interrupt(void);
-#endif /* CONF_WITH_NS16C2552 */
-
 #endif /* VECTORS_H */

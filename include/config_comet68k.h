@@ -16,6 +16,8 @@
 
 #define CONF_WITH_NS16C2552 1
 #define NS16C2552_BASE 0x00C20000
+#define CONF_NS16C2552_AUTOVECTOR 5             /* Define and set to the IRQ level for autovectored UART interrupt */
+#define CONF_NS16C2552_FIFOSIZE 16
 
 #define CONF_WITH_DP8570_TIMER 1
 #define DP8570_BASE 0x00C30000
@@ -45,7 +47,7 @@
 # endif
 #endif
 #define CONF_SERIAL_CONSOLE_POLLING_MODE 0
-#define DEFAULT_BAUDRATE B115200
+#define DEFAULT_BAUDRATE B57600
 
 #define CHECKPOINT(v) { *(volatile UWORD *)(0xC00000) = (v); }
 #define FATAL(v) { *(volatile UWORD *)(0xC00000) = (v); HCF(); }

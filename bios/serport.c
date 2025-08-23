@@ -126,6 +126,8 @@ static const EXT_IOREC iorec_init = {
 #if CONF_WITH_DUART
 /* For the DUART, we place the ports at Bconmap devices 10 and 11 */
 # define MAPTABLE_SIZE 6
+#elif CONF_WITH_NS16C2552
+# define MAPTABLE_SIZE 8
 #else
 # define MAPTABLE_SIZE 4
 #endif
@@ -171,9 +173,11 @@ static const MAPTAB maptable_mfp_tt =
 #endif  /* CONF_WITH_TT_MFP */
 
 #if CONF_WITH_NS16C2552
-static EXT_IOREC iorecA, iorecB;
-static UBYTE ibufA[RS232_BUFSIZE], obufA[RS232_BUFSIZE];
-static UBYTE ibufB[RS232_BUFSIZE], obufB[RS232_BUFSIZE];
+/* In an attempt to keep everything related to this particular UART device in one file, these items are brought in as
+ * externs from ns16c2552.c */
+extern EXT_IOREC iorecA, iorecB;
+extern UBYTE ibufA[RS232_BUFSIZE], obufA[RS232_BUFSIZE];
+extern UBYTE ibufB[RS232_BUFSIZE], obufB[RS232_BUFSIZE];
 static const MAPTAB maptable_port_a =
     { bconstatA, bconinA, bcostatA, bconoutA, rsconfA, &iorecA };
 static const MAPTAB maptable_port_b =
@@ -1451,139 +1455,87 @@ static ULONG rsconfDUARTB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WO
 #endif /* CONF_WITH_DUART */
 
 #if CONF_WITH_NS16C2552
-void ns16c2552_init(void)
-{
-    struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
-    struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);
-    UBYTE *dll = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLL_REG);
-    UBYTE *dlm = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLM_REG);
-
-    lcr->WLEN = 3;           /* 8 bits per byte */
-    lcr->SLEN = 0;           /* 1 stop bit */
-    lcr->PEN = 0;            /* Parity disabled */
-
-    lcr->DLAB = 1;           /* Access divisor registers */
-
-    *dll = 4;                /* 7.3728MHz / 16 / 4 = 115200 baud */
-    *dlm = 0;
-
-    lcr->DLAB = 0;
-
-    fcr->u8 = 0x7;           /* Reset FIFOs, enable TX and RX */
-
-	*(UBYTE *)(NS16C2552_BASE + NS16C2552_THR_REG) = 'B';
-}
-
 /*
  * NS16C2552 port A i/o routines
  */
-static LONG bconstatA(void)
+LONG bconstatA(void)
 {
-	CHECKPOINT(0xA000);
-
     return bconstat_iorec(&iorecA);
 }
 
-static LONG bconinA(void)
+LONG bconinA(void)
 {
-	CHECKPOINT(0xA001);
-
     return bconin_iorec(&iorecA);
 }
 
-static LONG bcostatA(void)
+LONG bcostatA(void)
 {
-	CHECKPOINT(0xA002);
+    // struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_LSR_REG);
+    //
+    // return (lsr->THRE) ? -1L : 0L;
 
-    struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_LSR_REG);
+    IOREC *out = &iorecB.out;
 
-	return (lsr->THRE) ? -1L : 0L;
+    /* set the status according to buffer availability */
+    return (out->head == incr_tail(out)) ? 0L : -1L;
 }
 
-static LONG bconoutA(WORD dev, WORD b)
+LONG bconoutA(WORD dev, WORD b)
 {
-	CHECKPOINT(0xA003);
-
-	/* Wait for the THR to be empty */
-	while (!bcostatA());
-
-	/* Send the byte */
-	*(UBYTE *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_THR_REG) = (UBYTE)b;
-
-	return 0L;
+    FATAL(0xF00A);
 }
 
 /*
  * NS16C2552 port B i/o routines
  */
-static LONG bconstatB(void)
-{
-	CHECKPOINT(0xB000);
 
+/* bconstatX tells us whether there is a byte available in the rx ring buffer */
+LONG bconstatB(void)
+{
     return bconstat_iorec(&iorecB);
 }
 
-static LONG bconinB(void)
+/* bconinX takes a byte from the rx ring buffer */
+LONG bconinB(void)
 {
-	CHECKPOINT(0xB001);
-
     return bconin_iorec(&iorecB);
 }
 
-static LONG bcostatB(void)
+/* bcostatX tells us whether there is room to queue another byte in the tx ring buffer */
+LONG bcostatB(void)
 {
-	CHECKPOINT(0xB002);
+    IOREC *out = &iorecB.out;
 
-    struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_LSR_REG);
-
-	return (lsr->THRE) ? -1L : 0L;
+    /* set the status according to buffer availability */
+    return (out->head == incr_tail(out)) ? 0L : -1L;
 }
 
+/* bconoutX queues a byte in the tx ring buffer */
 LONG bconoutB(WORD dev, WORD b)
 {
-	CHECKPOINT(0xB003);
+    (void)dev;
 
-	/* Wait for the THR to be empty */
-	while (!bcostatB());
+    /* Wait for room to queue the byte */
+    while(!bcostatB()) {}
 
-	/* Send the byte */
-	*(UBYTE *)(NS16C2552_BASE + NS16C2552_THR_REG) = (UBYTE)b;
+    /* Send it */
+    ns16c2552_tx((void *)NS16C2552_BASE, &iorecB, (UBYTE)b);
 
-	return 0L;
-}
-static ULONG rsconf_ns16c2552(void *port,EXT_IOREC *iorec,WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
-{
-    ULONG old = 0;
-
-    return old;
+    return 1L;
 }
 
-static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
-	CHECKPOINT(0xA004);
+    CHECKPOINT(0xA004);
 
-    return rsconf_ns16c2552(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
+    return ns16c2552_rsconf(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
 }
 
-static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
-	CHECKPOINT(0xB004);
+    CHECKPOINT(0xB004);
 
-    return rsconf_ns16c2552(NULL,&iorecB,baud,ctrl,ucr,rsr,tsr,scr);
-}
-
-void ns16c2552_interrupt_ch_a(ULONG priority)
-{
-	CHECKPOINT(0xA005);
-
-	(void)priority;
-}
-
-void ns16c2552_interrupt_ch_b(ULONG priority)
-{
-	CHECKPOINT(0xB005);
-
-	(void)priority;
+    return ns16c2552_rsconf(NULL,&iorecB,baud,ctrl,ucr,rsr,tsr,scr);
 }
 #endif /* CONF_WITH_NS16C2552 */
 
@@ -1662,11 +1614,11 @@ static void init_bconmap(void)
 
 #if CONF_WITH_NS16C2552
     if (has_ns16c2552) {
-        memcpy(&maptable[1],&maptable_port_b,sizeof(MAPTAB));
-        memcpy(&maptable[2],&maptable_port_a,sizeof(MAPTAB));
+        memcpy(&maptable[6],&maptable_port_b,sizeof(MAPTAB));
+        memcpy(&maptable[7],&maptable_port_a,sizeof(MAPTAB));
 
-        bconmap_root.maptabsize = 3;
-		bconmap_root.mapped_device = 1;
+        bconmap_root.maptabsize = 8;
+		bconmap_root.mapped_device = 12;
     }
 #endif /* CONF_WITH_NS16C2552 */
 

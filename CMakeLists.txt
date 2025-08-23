@@ -45,7 +45,7 @@ configure_file(version.c.in version.c)
 
 set(BUILD_TOOLS_OPTFLAGS -O)
 set(CPUFLAGS -m68000)
-set(OTHERFLAGS -fomit-frame-pointer -fno-common)
+set(OTHERFLAGS -fomit-frame-pointer -fno-common -g)
 set(WARNFLAGS
         -Wall -Werror=undef -Werror=missing-prototypes -Werror=strict-prototypes -Werror=implicit-function-declaration
         -Werror=format -Werror=redundant-decls -Werror=format-extra-args  -Werror=old-style-definition
@@ -73,7 +73,7 @@ set(bios_src
         bios/parport.c bios/screen.c bios/serport.c bios/sound.c bios/videl.c bios/vt52.c bios/xhdi.c
         bios/pmmu030.c bios/68040_pmmu.S bios/amiga.c bios/amiga2.S bios/spi_vamp.c
         bios/lisa.c bios/lisa2.S bios/delay.c bios/delayasm.S bios/sd.c bios/memory2.c bios/bootparams.c
-        bios/scsi.c bios/nova.c bios/dsp.c bios/dsp2.S bios/scsidriv.c bios/dp8570.c
+        bios/scsi.c bios/nova.c bios/dsp.c bios/dsp2.S bios/scsidriv.c bios/ns16c2552.c bios/dp8570.c
 )
 
 if (COLDFIRE)
@@ -348,6 +348,7 @@ function(configure_target target_name target_define rom_size optflags unique)
 endfunction()
 
 #                target_name        target_define              rom_size     optflags    unique
+configure_target(comet68k           MACHINE_COMET68K           512          "-O2"       US WITH_AES OFF WITH_CLI ON)
 #configure_target(etos192us          TARGET_192                 192          "-Os"       US WITH_AES ON  WITH_CLI OFF)
 #configure_target(etos256us          TARGET_256                 256          "-Os"       US WITH_AES ON  WITH_CLI ON)
 #configure_target(etos512us          TARGET_512                 512          "-O2"       US WITH_AES ON  WITH_CLI ON)
@@ -355,12 +356,11 @@ endfunction()
 #configure_target(tiny68k            MACHINE_TINY68K            256          "-O2"       US WITH_AES OFF WITH_CLI ON)
 #configure_target(rosco_v2           MACHINE_ROSCO_V2           256          "-Os"       US WITH_AES ON  WITH_CLI ON)
 #configure_target(bitsy_v1           MACHINE_BITSY_V1           512          "-O2"       US WITH_AES ON WITH_CLI ON)
-configure_target(bitsy_v1_serial    MACHINE_BITSY_V1_SERIAL    512          "-O2"       US WITH_AES OFF WITH_CLI ON)
+#configure_target(bitsy_v1_serial    MACHINE_BITSY_V1_SERIAL    512          "-O2"       US WITH_AES OFF WITH_CLI ON)
 #configure_target(bitsy_v1_uk        MACHINE_BITSY_V1           512          "-O2"       UK WITH_AES ON  WITH_CLI ON)
 #configure_target(roberts7531        MACHINE_ROBERTS7531        256          "-Os"       US WITH_AES ON  WITH_CLI ON)
 #configure_target(mega-68000         MACHINE_MEGA_68000         256          "-Os"       UK WITH_AES OFF WITH_CLI ON)
 #configure_target(ddraig68k          MACHINE_DDRAIG68K          512          "-Os"       UK WITH_AES OFF WITH_CLI ON)
-configure_target(comet68k           MACHINE_COMET68K           512          "-O2"       US WITH_AES OFF WITH_CLI ON)
 
 
 

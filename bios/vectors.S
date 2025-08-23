@@ -45,10 +45,6 @@
         .globl  _duart_interrupt
 #endif
 
-#if CONF_WITH_NS16C2552
-        .globl _ns16c2552_interrupt
-#endif /* CONF_WITH_NS16C2552 */
-
 // ==== References ===========================================================
 
         // TOS System variables
@@ -872,45 +868,6 @@ duart_intr_done:
         rte
 
 #endif /* CONF_WITH_DUART */
-
-#if CONF_WITH_NS16C2552
-/* ==== NS16C2552 interrupt handlers ============================================
- *
- * Dispatch interrupts to the two channel interrupt handlers
- */
-_ns16c2552_interrupt:
-        /* Check channel B IIR */
-        lea     NS16C2552_BASE, a0
-        clr.l   d0
-        move.b  2(a0), d0       /* Gets the channel B IIR register contents */
-        andi.b  #0x3F, d0       /* Mask out unwanted bits (FIFO enables in some UARTS) */
-
-        btst.b  #0, d0          /* If bit 0 is set, no interrupt is pending */
-        beq     ns16c2552_interrupt_check_a
-
-        /* If bit 0 is clear, jump to channel B interrupt handler, passing the masked IIR contents as an index */
-        move.l  d0, -(sp)
-        jsr     _ns16c2552_interrupt_ch_b
-        lea     4(sp), sp
-
-        /* Check channel A IIR */
-ns16c2552_interrupt_check_a:
-        lea     NS16C2552_BASE, a0
-        clr.l   d0
-        move.b  10(a0), d0       /* Gets the channel B IIR register contents */
-        andi.b  #0x3F, d0       /* Mask out unwanted bits (FIFO enables in some UARTS) */
-
-        btst.b  #0, d0          /* If bit 0 is set, no interrupt is pending */
-        beq     ns16c2552_interrupt_done
-
-        /* If bit 0 is clear, jump to channel A interrupt handler, passing the masked IIR contents as an index */
-        move.l  d0, -(sp)
-        jsr     _ns16c2552_interrupt_ch_a
-        lea     4(sp), sp
-
-ns16c2552_interrupt_done:
-        rte
-#endif /* CONF_WITH_NS16C2552 */
 
 // ==== Critical error handler functions =====================================
 

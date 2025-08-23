@@ -52,6 +52,7 @@
 #include "blkdev.h"
 #include "parport.h"
 #include "serport.h"
+#include "ns16c2552.h"
 #include "string.h"
 #include "natfeat.h"
 #include "delay.h"

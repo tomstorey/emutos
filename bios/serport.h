@@ -116,12 +116,6 @@ void duart_rs232_interrupt_handler_channel_a(void);
 void duart_init_system_timer(void);
 #endif
 
-#if CONF_WITH_NS16C2552
-void ns16c2552_init(void);
-void ns16c2552_interrupt_ch_a(ULONG priority);
-void ns16c2552_interrupt_ch_b(ULONG priority);
-#endif /* CONF_WITH_NS16C2552 */
-
 #if BCONMAP_AVAILABLE
 /*
  * Bconmap() stuff
