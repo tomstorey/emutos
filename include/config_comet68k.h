@@ -23,6 +23,7 @@
 #define NS16C2552_BASE 0x00C20000
 #define CONF_NS16C2552_AUTOVECTOR 5             /* Define and set to the IRQ level for autovectored UART interrupt */
 #define CONF_NS16C2552_FIFOSIZE 16
+#define CONF_WITH_IKBD_NS16C2552 1
 
 #define CONF_WITH_DP8570_TIMER 1
 #define DP8570_BASE 0x00C30000

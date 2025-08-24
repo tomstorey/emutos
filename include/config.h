@@ -992,6 +992,16 @@
 #endif
 
 /*
+ * Set CONF_WITH_NS16C2552 to 1 to enable support for the NS16C2552 Dual UART and compatibles
+ */
+#ifndef CONF_WITH_NS16C2552
+# define CONF_WITH_NS16C2552 0
+# define NS16C2552_BASE 0
+# define CONF_NS16C2552_AUTOVECTOR 0
+# define CONF_NS16C2552_FIFOSIZE 16
+#endif
+
+/*
  * Set base address of DUART. Coldfire uses 0xFFFF8600
  */
 #ifndef DUART_BASE
@@ -1032,6 +1042,16 @@
 # else
 #  define CONF_COLDFIRE_TIMER_C 0
 # endif
+#endif
+
+/*
+ * Set CONF_WITH_DP8570_TIMER to 1 to simulate Timer C using the
+ * timer available from a DP8570 timer/RTC.
+ */
+#ifndef CONF_WITH_DP8570_TIMER
+# define CONF_WITH_DP8570_TIMER 0
+# define DP8570_BASE 0
+# define CONF_DP8570_AUTOVECTOR 0
 #endif
 
 /*
@@ -1095,6 +1115,14 @@
  */
 #ifndef CONF_WITH_IKBD_DUART
 # define CONF_WITH_IKBD_DUART 0
+#endif
+
+/*
+ * Set CONF_WITH_IKBD_NS16C2552 to 1 to enable IKBD support via
+ * Channel B of the 16C2552 compatible UART.
+ */
+#ifndef CONF_WITH_IKBD_NS16C2552
+# define CONF_WITH_IKBD_NS16C2552 0
 #endif
 
 /*
