@@ -93,6 +93,12 @@ interrupt_ch_b(ULONG source)
     /* Serves a dual purposes for reading and writing */
     volatile UBYTE *rbr = (UBYTE *)(NS16C2552_BASE + NS16C2552_RBR_REG);
 
+    /* For saving a copy of the LSR when checking error conditions */
+    struct ns16c2552_lsr saved_lsr;
+
+    /* For saving the CPU Status Register and IPL when entering/exiting critical sections */
+    WORD old_sr;
+
     IOREC *out;
 
     switch (source) {
@@ -100,7 +106,7 @@ interrupt_ch_b(ULONG source)
             out = &iorecB.out;
 
             /* Enter critical section */
-            WORD old_sr = set_sr(0x2700);
+            old_sr = set_sr(0x2700);
 
             /* If the iorec tail==head then the tx ring is empty. Disable interrupts and we're done */
             if (out->tail == out->head) {
@@ -134,8 +140,6 @@ interrupt_ch_b(ULONG source)
 
         case NS16C2552_INT_RXTIMEOUT:
         case NS16C2552_INT_RXRDY:
-            struct ns16c2552_lsr saved_lsr;
-
             for (;;) {
                 /* Save the LSR to a temporary register so that we dont lose any error condition bits */
                 saved_lsr.u8 = lsr->u8;
@@ -152,11 +156,17 @@ interrupt_ch_b(ULONG source)
                     continue;
                 }
 
+                /* Enter critical section */
+                old_sr = set_sr(0x2700);
+
 #if !CONF_WITH_IKBD_NS16C2552
                 push_serial_iorec(&iorecB.in, *rbr);
 #else
                 push_ascii_ikbdiorec(*rbr);
 #endif
+
+                /* Exit critical section */
+                (void)set_sr(old_sr);
             }
 
             break;
