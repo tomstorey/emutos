@@ -134,9 +134,18 @@ interrupt_ch_b(ULONG source)
 
         case NS16C2552_INT_RXTIMEOUT:
         case NS16C2552_INT_RXRDY:
-            while (lsr->RXRDY) {
+            struct ns16c2552_lsr saved_lsr;
+
+            for (;;) {
+                /* Save the LSR to a temporary register so that we dont lose any error condition bits */
+                saved_lsr.u8 = lsr->u8;
+
+                if (!saved_lsr.RXRDY) {
+                    break;
+                }
+
                 /* Check for error conditions, and also ignore break characters */
-                if (lsr->OERR || lsr->PERR || lsr->FERR || lsr->RXBRK) {
+                if (saved_lsr.OERR || saved_lsr.PERR || saved_lsr.FERR || saved_lsr.RXBRK) {
                     /* Dummy read the RBR and move to the next received character */
                     (void)*rbr;
 
