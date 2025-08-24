@@ -46,11 +46,6 @@ dp8570_init_system_timer(void)
 static void __attribute__((interrupt))
 interrupt(void)
 {
-    static UWORD counter = 0;
-
-    CHECKPOINT(0x8570);
-    CHECKPOINT(++counter);
-
     /* Get interrupt conditions */
     volatile UBYTE *msr = (UBYTE *)DP8570_BASE + DP8570_MSR;
     struct dp8570_msr conds = { .u8 = *msr };
