@@ -73,7 +73,7 @@ interrupt(void)
                 "2:                                         \n\t"
                 :
                 :
-                :
+                :"a0"
             );
         }
     }
