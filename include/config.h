@@ -1167,6 +1167,13 @@
 #endif
 
 /*
+ * Set CONF_WITH_COMET_CF to 1 to activate COMET Compact Flash interface support
+ */
+#ifndef CONF_WITH_COMET_CF
+# define CONF_WITH_COMET_CF 0
+#endif
+
+/*
  * Set CONF_WITH_SDMMC to 1 to activate SD/MMC bus support
  */
 #ifndef CONF_WITH_SDMMC

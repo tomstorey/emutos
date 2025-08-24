@@ -36,6 +36,7 @@
 #include "biosmem.h"
 #include "amiga.h"
 #include "intmath.h"
+#include "comet_cf.h"
 
 #if CONF_WITH_IDE
 
@@ -120,7 +121,7 @@ struct IDE
 #define IDE_WRITE_COMMAND_HEAD(i,a,b) \
     { i->head = b; i->command = a; }
 
-#if defined(MACHINE_TINY68K) || defined(MACHINE_ROBERTS7531) || defined(MACHINE_MEGA_68000) || defined(MACHINE_DDRAIG68K)
+#if defined(MACHINE_TINY68K) || defined(MACHINE_ROBERTS7531) || defined(MACHINE_MEGA_68000) || defined(MACHINE_DDRAIG68K) || defined(MACHINE_COMET68K)
 # define IDE_WRITE_CONTROL(i,a)
 # define IDE_READ_ALT_STATUS(i)    i->command
 #else
@@ -177,15 +178,17 @@ struct IDE
 #define ide_put_and_incr(src,dst) asm volatile("move.w (%0)+,(%1)" : "=a"(src): "a"(dst), "0"(src));
 #endif
 
-#if CONF_ATARI_HARDWARE || CONF_ATARI_IDE
+#if CONF_ATARI_HARDWARE || CONF_ATARI_IDE || CONF_WITH_COMET_CF
 
 #ifdef MACHINE_FIREBEE
 #define NUM_IDE_INTERFACES  2
+#elif CONF_WITH_COMET_CF
+#define NUM_IDE_INTERFACES COMET_CF_COUNT
 #else
 #define NUM_IDE_INTERFACES  1   /* (e.g. stacked ST Doubler) */
 #endif
 
-#if defined(MACHINE_TINY68K) || defined(MACHINE_ROBERTS7531) || defined(MACHINE_MEGA_68000) || defined(MACHINE_DDRAIG68K)
+#if defined(MACHINE_TINY68K) || defined(MACHINE_ROBERTS7531) || defined(MACHINE_MEGA_68000) || defined(MACHINE_DDRAIG68K) || defined(MACHINE_COMET68K)
 
 struct IDE
 {
@@ -220,6 +223,23 @@ struct IDE
   #define ide_interface           ((volatile struct IDE *)0x00AE0000)
 #elif defined(MACHINE_DDRAIG68K)
   #define ide_interface           ((volatile struct IDE *)0xFFF7F300)
+#elif CONF_WITH_COMET_CF
+struct disk_status_reg {
+    union {
+        struct {
+            volatile UBYTE BSY:1;
+            volatile UBYTE RDY:1;
+            volatile UBYTE DWF:1;
+            volatile UBYTE DSC:1;
+            volatile UBYTE DRQ:1;
+            volatile UBYTE CORR:1;
+            volatile UBYTE :1;
+            volatile UBYTE ERROR:1;
+        };
+        volatile UBYTE u8;
+    };
+};
+  #define ide_interface           ((volatile struct IDE *)COMET_CF_BASE)
 #else
   #define ide_interface           ((volatile struct IDE *)0x00a00000)
 #endif
@@ -657,6 +677,44 @@ BOOL detect_ide(void)
             break;
         }
     }
+#elif CONF_WITH_COMET_CF
+    /* This represents the first stage of IDE interface setup. Check for the presence of each CF interface, and if
+     * found check whether a card is detected in the slot. If so, record the interface in has_ide. */
+    has_ide = 0;
+    bitmask = 1;
+
+    /* Pointer to the first COMET IDE interface */
+    void *base = (void *)COMET_CF_BASE;
+
+    for (i = 0; i < NUM_IDE_INTERFACES; i++) {
+        /* COMET CF interfaces are spaced every 4KB, so re-initialise the base address of the interface based on its
+         * index */
+        ifinfo[i].base_address = (struct IDE *)base;
+
+        /* A pointer to the control/status register of this interface */
+        struct comet_cf_csr *csr = base + COMET_CF_CSR_OFFSET;
+
+        KDEBUG(("detect_ide(): check for COMET CF interface at %p", base));
+
+        /* Test for the presence of a CF interface by trying to read the control/status register */
+        if (check_read_byte((long)&csr->u8)) {
+            KDEBUG((", CSR = 0x%02X", csr->u8));
+
+            /* Check if a card is present, if it is then the interface is probably useable */
+            if (csr->CD) {
+                KDEBUG((", card present\n"));
+                has_ide |= bitmask;
+            } else {
+                KDEBUG((", no card\n"));
+            }
+        } else {
+            KDEBUG((", controller absent\n"));
+        }
+
+        /* Prepare for next interface */
+        bitmask <<= 1;
+        base += 0x1000;
+    }
 #else
     has_ide = 0x00;
 #endif
@@ -714,6 +772,51 @@ void ide_init(void)
         if (has_ide&bitmask)
             if (!ide_interface_exists(i, timeout))
                 has_ide &= ~bitmask;
+
+    KDEBUG(("ide_init(): has_ide = 0x%02x\n",has_ide));
+#elif CONF_WITH_COMET_CF
+    /* The second stage of IDE interface setup. Release reset via the CSR, then wait for the card to become ready. If
+     * the card becomes ready, keep it in has_ide, otherwise mask it out. */
+    bitmask = 1;
+    ULONG timeout;
+
+    /* Pointer to the first COMET IDE interface */
+    void *base = (void *)COMET_CF_BASE;
+
+    for (i = 0; i < NUM_IDE_INTERFACES; i++) {
+        if (has_ide & bitmask) {
+            /* A pointer to the control/status register of this interface */
+            struct comet_cf_csr *csr = base + COMET_CF_CSR_OFFSET;
+            const struct disk_status_reg *stat = base + 0xE;
+
+            KDEBUG(("ide_init(): initialise COMET CF interface at %p", base));
+
+            /* Release reset via CSR */
+            csr->RESET = 1;
+
+            /* Wait to see if card becomes available */
+            for (timeout = 0xFFFFF; timeout > 0 && (stat->BSY || !stat->RDY || !stat->DSC); timeout--) {}
+
+            KDEBUG((", timeout=0x%08X, status=0x%02X", (unsigned int)timeout, stat->u8));
+
+            if (timeout > 0) {
+                /* Success */
+                csr->IN_USE = 1;
+                csr->T = 2;             /* PIO mode 4 timing */
+
+                KDEBUG((", success\n"));
+            } else {
+                /* Failed, remove from has_ide */
+                has_ide &= ~bitmask;
+
+                KDEBUG((", failed\n"));
+            }
+        }
+
+        /* Prepare for next interface */
+        bitmask <<= 1;
+        base += 0x1000;
+    }
 
     KDEBUG(("ide_init(): has_ide = 0x%02x\n",has_ide));
 #endif
@@ -1643,12 +1746,17 @@ static LONG ata_identify(WORD dev)
     ifnum = dev / 2;    /* i.e. primary IDE, secondary IDE, ... */
     ifdev = dev & 1;    /* 0 or 1 */
 
-    KDEBUG(("ata_identify(%d [ifnum=%d ifdev=%d])\n", dev, ifnum, ifdev));
-
     /* with twisted cable the response of IDENTIFY_DEVICE will be byte-swapped */
     if (ide_device_type(dev) == DEVTYPE_ATA) {
+#ifndef CONF_WITH_COMET_CF
         ret = ide_read(IDE_CMD_IDENTIFY_DEVICE,ifnum,ifdev,0L,1,(UBYTE *)&identify,
                        ifinfo[ifnum].twisted_cable != IDE_DATA_REGISTER_IS_BYTESWAPPED);
+#else
+        /* COMET CF implements a hardware swap of bytes which is adequate for reading/writing sector data. But
+         * in my experience so far (with the cards I have available to test with), identify commands require that
+         * each pair of bytes be swapped. */
+        ret = ide_read(IDE_CMD_IDENTIFY_DEVICE, ifnum, ifdev, 0L, 1, (UBYTE *)&identify, 1);
+#endif
     } else ret = EUNDEV;
 
     if (ret < 0)

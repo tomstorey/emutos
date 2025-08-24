@@ -29,6 +29,10 @@
 #define DP8570_BASE 0x00C30000
 #define CONF_DP8570_AUTOVECTOR 1                /* Define and set to the IRQ level for autovectored timer interrupt */
 
+#define CONF_WITH_COMET_CF 1
+#define COMET_CF_BASE 0x00C50000
+#define COMET_CF_COUNT 4
+
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
 # ifndef CONF_STRAM_SIZE
@@ -82,13 +86,13 @@
 #endif
 
 # ifndef CONF_WITH_IDE
-#  define CONF_WITH_IDE 0
+#  define CONF_WITH_IDE 1
 # endif
 # ifndef CONF_ATARI_IDE
 #  define CONF_ATARI_IDE 0
 # endif
 # ifndef CONF_IDE_NO_RESET
-#  define CONF_IDE_NO_RESET 0
+#  define CONF_IDE_NO_RESET 1
 # endif
 
 # ifndef CONF_WITH_SDMMC
