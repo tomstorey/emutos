@@ -2,6 +2,7 @@
 #include "vectors.h"
 #include "serport.h"
 #include "asm.h"
+#include "ikbd.h"
 #include "ns16c2552.h"
 
 #if defined(CONF_WITH_NS16C2552) && CONF_WITH_NS16C2552
@@ -11,7 +12,6 @@
 EXT_IOREC iorecA, iorecB;
 UBYTE ibufA[RS232_BUFSIZE], obufA[RS232_BUFSIZE];
 UBYTE ibufB[RS232_BUFSIZE], obufB[RS232_BUFSIZE];
-
 
 /* Based on a 7.3728MHz clock */
 static const WORD ns16c2552_timeconst[] = {
@@ -37,7 +37,6 @@ static const WORD ns16c2552_timeconst[] = {
 static void interrupt(void);
 // static void interrupt_ch_a(ULONG source);
 static void interrupt_ch_b(ULONG source);
-static void add_to_rx_ring(EXT_IOREC *iorec, UBYTE data);
 
 void ns16c2552_init(void)
 {
@@ -136,7 +135,11 @@ interrupt_ch_b(ULONG source)
         case NS16C2552_INT_RXTIMEOUT:
         case NS16C2552_INT_RXRDY:
             while (lsr->RXRDY) {
-                add_to_rx_ring(&iorecB, *rbr);
+#if !CONF_WITH_IKBD_NS16C2552
+                push_serial_iorec(&iorecB.in, *rbr);
+#else
+                push_ascii_ikbdiorec(*rbr);
+#endif
             }
 
             break;
@@ -144,34 +147,6 @@ interrupt_ch_b(ULONG source)
         default:
             FATAL(0xFBEE); /* Unhandled */
     }
-}
-
-static void
-add_to_rx_ring(EXT_IOREC *iorec, UBYTE data)
-{
-    IOREC *in = &iorec->in;
-    WORD tail = in->tail;
-
-    /* data &= iorec->datamask; */
-
-    /* Enter critical section */
-    WORD old_sr = set_sr(0x2700);
-
-    /* Wrap the tail if it exceeds the buffer size */
-    tail++;
-
-    if (tail >= in->size) {
-        tail = 0;
-    }
-
-    /* If the tail has not reached the head, the data can be queued in the ring */
-    if (tail != in->head) {
-        *(in->buf + tail) = data;
-        in->tail = tail;
-    }
-
-    /* Exit critical section */
-    (void)set_sr(old_sr);
 }
 
 void
@@ -218,8 +193,6 @@ done:
     /* Exit critical section */
     (void)set_sr(old_sr);
 }
-
-
 
 ULONG
 ns16c2552_rsconf(void *port, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)

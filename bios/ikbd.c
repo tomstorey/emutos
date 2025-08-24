@@ -522,7 +522,9 @@ static void do_key_repeat(void)
                     (UBYTE)mouse_packet[0],(UBYTE)mouse_packet[1],(UBYTE)mouse_packet[2]));
             call_mousevec(mouse_packet);
         }
-    } else push_ikbdiorec(kb_last.key);
+    } else {
+        push_ikbdiorec(kb_last.key);
+    }
 
     /* The key will repeat again until some key up */
     kb_ticks = kb_repeat;
@@ -906,8 +908,9 @@ void kbd_int(UBYTE scancode)
     /*
      * if we're not sending mouse packets, send a real key
      */
-    if (!mouse_packet[0])
+    if (!mouse_packet[0]) {
         push_ikbdiorec(kb_last.key);
+    }
 }
 
 
@@ -978,6 +981,8 @@ void ikbd_writeb(UBYTE b)
 #elif CONF_WITH_IKBD_DUART
     volatile UBYTE *duart_base = (volatile UBYTE *) DUART_BASE;
     duart_base[DUART_THRB] = b;
+#elif CONF_WITH_IKBD_NS16C2552
+    (void)b;
 #endif
 }
 
@@ -1030,6 +1035,8 @@ static UBYTE ikbd_readb(WORD timeout)
         delay_loop(loopcount_1_msec);
     }
     return 0; /* bogus value when timeout */
+#elif CONF_WITH_IKBD_NS16C2552
+    return 0; /* bogus value */
 #else
     return 0; /* bogus value */
 #endif
