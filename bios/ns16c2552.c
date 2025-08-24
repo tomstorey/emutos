@@ -135,6 +135,14 @@ interrupt_ch_b(ULONG source)
         case NS16C2552_INT_RXTIMEOUT:
         case NS16C2552_INT_RXRDY:
             while (lsr->RXRDY) {
+                /* Check for error conditions, and also ignore break characters */
+                if (lsr->OERR || lsr->PERR || lsr->FERR || lsr->RXBRK) {
+                    /* Dummy read the RBR and move to the next received character */
+                    (void)*rbr;
+
+                    continue;
+                }
+
 #if !CONF_WITH_IKBD_NS16C2552
                 push_serial_iorec(&iorecB.in, *rbr);
 #else
