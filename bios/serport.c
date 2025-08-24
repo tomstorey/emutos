@@ -89,7 +89,7 @@ static ULONG rsconfDUARTB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WO
 static LONG bconstatA(void);
 static LONG bconinA(void);
 static LONG bcostatA(void);
-static LONG bconoutA(WORD,WORD);
+/* bconoutA is public via serport.h */
 static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
 
 static LONG bconstatB(void);
@@ -1458,17 +1458,17 @@ static ULONG rsconfDUARTB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WO
 /*
  * NS16C2552 port A i/o routines
  */
-LONG bconstatA(void)
+static LONG bconstatA(void)
 {
     return bconstat_iorec(&iorecA);
 }
 
-LONG bconinA(void)
+static LONG bconinA(void)
 {
     return bconin_iorec(&iorecA);
 }
 
-LONG bcostatA(void)
+static LONG bcostatA(void)
 {
     // struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_LSR_REG);
     //
@@ -1482,7 +1482,27 @@ LONG bcostatA(void)
 
 LONG bconoutA(WORD dev, WORD b)
 {
+# if NS16C2552_DEBUG_PRINT
+#  if defined(MACHINE_COMET68K)
+    (void)dev;
+
+    /* For debug printing purposes, queue directly with the UART */
+    void *base = (void *)NS16C2552_BASE + NS16C2552_CHA_OFFSET;
+
+    volatile UBYTE *thr = base + NS16C2552_THR_REG;
+    const struct ns16c2552_lsr *lsr = base + NS16C2552_LSR_REG;
+
+    /* Wait for FIFO to become empty */
+    while (!lsr->THRE) {}
+
+    /* Send the byte */
+    *thr = (UBYTE)b;
+#  endif /* defined(MACHINE_COMET68K) */
+# else /* NS16C2552_DEBUG_PRINT */
     FATAL(0xF00A);
+# endif /* NS16C2552_DEBUG_PRINT */
+
+    return 1L;
 }
 
 /*
@@ -1490,19 +1510,19 @@ LONG bconoutA(WORD dev, WORD b)
  */
 
 /* bconstatX tells us whether there is a byte available in the rx ring buffer */
-LONG bconstatB(void)
+static LONG bconstatB(void)
 {
     return bconstat_iorec(&iorecB);
 }
 
 /* bconinX takes a byte from the rx ring buffer */
-LONG bconinB(void)
+static LONG bconinB(void)
 {
     return bconin_iorec(&iorecB);
 }
 
 /* bcostatX tells us whether there is room to queue another byte in the tx ring buffer */
-LONG bcostatB(void)
+static LONG bcostatB(void)
 {
     IOREC *out = &iorecB.out;
 
@@ -1511,7 +1531,7 @@ LONG bcostatB(void)
 }
 
 /* bconoutX queues a byte in the tx ring buffer */
-LONG bconoutB(WORD dev, WORD b)
+static LONG bconoutB(WORD dev, WORD b)
 {
     (void)dev;
 
@@ -1524,14 +1544,14 @@ LONG bconoutB(WORD dev, WORD b)
     return 1L;
 }
 
-ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
     CHECKPOINT(0xA004);
 
     return ns16c2552_rsconf(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
 }
 
-ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
     CHECKPOINT(0xB004);
 

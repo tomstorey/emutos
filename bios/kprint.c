@@ -133,6 +133,19 @@ static void kprintf_outc_duartB(int c)
 }
 #endif
 
+#if NS16C2552_DEBUG_PRINT
+# if defined(MACHINE_COMET68K)
+static void kprintf_outc_ns16c2552_chA(int c)
+{
+    /* Raw terminals usually require CRLF */
+    if (c == '\n')
+        bconoutA(1, '\r');
+
+    bconoutA(1, c);
+}
+# endif /* defined(MACHINE_COMET68K) */
+#endif /* NS16C2552_DEBUG_PRINT */
+
 #if DETECT_NATIVE_FEATURES
 static void kprintf_outc_natfeat(int c)
 {
@@ -225,6 +238,32 @@ static int vkprintf(const char *fmt, va_list ap)
         return rc;
     }
 #endif
+
+#if NS16C2552_DEBUG_PRINT
+# if defined(MACHINE_COMET68K)
+    /* The COMET68k bootloader leaves UART channel A configured so that it is available immediately for printing output.
+     * This can be used in conjunction with the --console option in the bootloader script to receive debug output from
+     * the board. We assume that the UART is available and don't bother checking for it. */
+    int rc;
+    char *stacksave = NULL;
+
+    if (boot_status & DOS_AVAILABLE) {
+        /* if Super() is available, */
+        if (!Super(1L)) {
+            /* check for user state. */
+            stacksave = (char *)Super(0L);  /* if so, switch to super   */
+        }
+    }
+
+    rc = doprintf(kprintf_outc_ns16c2552_chA, fmt, ap);
+
+    if (stacksave) {
+        SuperToUser(stacksave);             /* if we switched, switch back.    */
+    }
+
+    return rc;
+# endif /* defined(MACHINE_COMET68K) */
+#endif /* NS16C2552_DEBUG_PRINT */
 
 #if COLDFIRE_DEBUG_PRINT
     return doprintf(kprintf_outc_coldfire_rs232, fmt, ap);

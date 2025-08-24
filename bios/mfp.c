@@ -223,6 +223,7 @@ void init_system_timer(void)
     xbtimer(2, 0x50, 192, (LONG)int_timerc);
 # endif
 #elif CONF_WITH_DP8570_TIMER
+    KDEBUG(("dp8570_init_system_timer()\n"));
     dp8570_init_system_timer();
 #endif
 

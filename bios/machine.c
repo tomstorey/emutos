@@ -37,6 +37,7 @@
 #include "mfp.h"
 #include "scc.h"
 #include "duart68681.h"
+#include "ns16c2552.h"
 #include "memory.h"
 #include "coldfire.h"
 #include "dma.h"
@@ -221,7 +222,15 @@ int has_ns16c2552;
 
 static void detect_ns16c2552(void)
 {
-    has_ns16c2552 = 1;
+    has_ns16c2552 = 0;
+
+    /* The NS16C2552 and compatibles have two identical channels, and both contain a scratch byte. Try to read this
+     * byte from both channels to determine if a 16C2552 is present. First channel B then channel A. */
+    if (check_read_byte(NS16C2552_BASE + NS16C2552_SCR_REG)) {
+        if (check_read_byte(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_SCR_REG)) {
+            has_ns16c2552 = 1;
+        }
+    }
 
     KDEBUG(("has_ns16c2552 = %d\n", has_ns16c2552));
 }

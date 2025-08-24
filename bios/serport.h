@@ -116,6 +116,11 @@ void duart_rs232_interrupt_handler_channel_a(void);
 void duart_init_system_timer(void);
 #endif
 
+#if CONF_WITH_NS16C2552
+/* bconoutA is public so that it can be used for debug printing */
+LONG bconoutA(WORD,WORD);
+#endif /* CONF_WITH_NS16C2552 */
+
 #if BCONMAP_AVAILABLE
 /*
  * Bconmap() stuff
