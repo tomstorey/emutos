@@ -77,7 +77,40 @@ dp8570_init_clock(void)
     /* Apply basic configuration */
     basic_config();
 
-    /* Nothing further to apply for clock configuration once the basics have been configured */
+    struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
+    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
+    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    ULONG ctr;
+
+    /* Ensure we are accessing the first set of registers */
+    msr->u8 &= ~0xC0;
+
+    if (pfr->OSF) {
+        KDEBUG(("dp8570_init_clock(): oscillator fail event, attempting to start clock\n"));
+
+        msr->RS = 1;
+        rtmr->CSS = 1;
+
+        /* Fortunately the DP8570 has a register that counts 1/100's of a second, so we should be able to observe
+         * this register before and after some delay to see if it changes, and this may indicate that the clock is
+         * running again */
+        const UBYTE before = *(rtc + 5);
+
+        for (ctr = 0xFFFFFF; ctr; ctr--) {
+            if (*(rtc + 5) != before) {
+                break;
+            }
+        }
+
+        if (ctr == 0) {
+            KDEBUG(("dp8570_init_clock(): clock does not appear to be running\n"));
+            has_dp8570_rtc = 0;
+        } else {
+            KDEBUG(("dp8570_init_clock(): clock is running\n"));
+        }
+    }
 }
 
 LONG
@@ -93,6 +126,7 @@ basic_config(void)
     struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
     struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
     struct dp8570_irr *irr = (void *)DP8570_BASE + DP8570_IRR;
+    struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
     struct dp8570_omr *omr = (void *)DP8570_BASE + DP8570_OMR;
     struct dp8570_icr0 *icr0 = (void *)DP8570_BASE + DP8570_ICR0;
     struct dp8570_icr1 *icr1 = (void *)DP8570_BASE + DP8570_ICR1;
@@ -108,6 +142,10 @@ basic_config(void)
 
     /* Access bank 1 */
     msr->RS = 1;
+
+    /* The clock should be in 24 hour mode, and running from a 32678Hz crystal. Interrupts and timers do not
+     * function in the standby state. Keep the state of the CSS bit. */
+    rtmr->u8 &= 0x08;
 
     /* Configure the output modes for T1, INTR and MFO pins:
      *
