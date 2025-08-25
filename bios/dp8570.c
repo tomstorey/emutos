@@ -234,7 +234,7 @@ get_date(void)
 static UWORD
 get_time(void)
 {
-    /* Borrowed heavily from amiga_dogetdate() */
+    /* Borrowed heavily from amiga_dogettime() */
 
     const UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
