@@ -1171,6 +1171,9 @@
  */
 #ifndef CONF_WITH_COMET_CF
 # define CONF_WITH_COMET_CF 0
+# define COMET_CF_BASE 0
+# define CONF_COMET_CF_COUNT 0
+# define CONF_COMET_CF_XFER_32BIT 0
 #endif
 
 /*

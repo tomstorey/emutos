@@ -183,7 +183,7 @@ struct IDE
 #ifdef MACHINE_FIREBEE
 #define NUM_IDE_INTERFACES  2
 #elif CONF_WITH_COMET_CF
-#define NUM_IDE_INTERFACES COMET_CF_COUNT
+#define NUM_IDE_INTERFACES CONF_COMET_CF_COUNT
 #else
 #define NUM_IDE_INTERFACES  1   /* (e.g. stacked ST Doubler) */
 #endif
@@ -1225,7 +1225,7 @@ static void ide_get_data(volatile struct IDE *interface,UBYTE *buffer,ULONG buff
     }
 #endif
 
-#if defined(MACHINE_COMET68K) && COMET_CF_XFER_32BIT
+#if defined(MACHINE_COMET68K) && CONF_COMET_CF_XFER_32BIT
     if ((bufferlen & 0x1FF) == 0) {
         /* COMET CF interfaces can support 32 bit reads/writes, as long as whole sectors are being
          * transferred */
@@ -1426,7 +1426,7 @@ static void ide_put_data(volatile struct IDE *interface,UBYTE *buffer,ULONG buff
     XFERWIDTH *p2;
     XFERWIDTH *end2 = (XFERWIDTH *)(buffer + bufferlen);
 
-#if defined(MACHINE_COMET68K) && COMET_CF_XFER_32BIT
+#if defined(MACHINE_COMET68K) && CONF_COMET_CF_XFER_32BIT
     if ((bufferlen & 0x1FF) == 0) {
         /* COMET CF interfaces can support 32 bit reads/writes, as long as whole sectors are being
          * transferred */
@@ -1774,9 +1774,9 @@ static LONG ata_identify(WORD dev)
         ret = ide_read(IDE_CMD_IDENTIFY_DEVICE,ifnum,ifdev,0L,1,(UBYTE *)&identify,
                        ifinfo[ifnum].twisted_cable != IDE_DATA_REGISTER_IS_BYTESWAPPED);
 #else
-        /* COMET CF implements a hardware swap of bytes which is adequate for reading/writing sector data. But
-         * in my experience so far (with the cards I have available to test with), identify commands require that
-         * each pair of bytes be swapped. */
+        /* The COMET CF interface implements a hardware swap of bytes which is suitable for reading/writing sector
+         * data. But in my experience so far (with the cards I have available to test with), identify commands return
+         * data with each pair of bytes swapped, therefore a software byte swap is required. */
         ret = ide_read(IDE_CMD_IDENTIFY_DEVICE, ifnum, ifdev, 0L, 1, (UBYTE *)&identify, 1);
 #endif
     } else ret = EUNDEV;

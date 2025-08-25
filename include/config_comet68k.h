@@ -31,8 +31,8 @@
 
 #define CONF_WITH_COMET_CF 1
 #define COMET_CF_BASE 0x00C50000
-#define COMET_CF_COUNT 4
-#define COMET_CF_XFER_32BIT 0
+#define CONF_COMET_CF_COUNT 4
+#define CONF_COMET_CF_XFER_32BIT 0
 
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
