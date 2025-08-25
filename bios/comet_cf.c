@@ -16,8 +16,6 @@ comet_cf_fast_read(void *interface, UBYTE *buffer, ULONG bufferlen, int need_byt
     ULONG temp;
     ULONG *dst = (ULONG *)buffer;
 
-    KDEBUG(("comet_cf_fast_read(): data=%p\n", data));
-
     /* Loop counter */
     ULONG ctr;
 
@@ -51,14 +49,17 @@ comet_cf_fast_read(void *interface, UBYTE *buffer, ULONG bufferlen, int need_byt
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
+
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
+
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
+
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
             ide_get_and_incr(data, dst);
@@ -76,8 +77,6 @@ comet_cf_fast_write(void *interface, UBYTE *buffer, ULONG bufferlen, int need_by
     ULONG temp;
     ULONG *src = (ULONG *)buffer;
 
-    KDEBUG(("comet_cf_fast_write(): data=%p\n", data));
-
     /* Loop counter */
     ULONG ctr;
 
@@ -111,14 +110,17 @@ comet_cf_fast_write(void *interface, UBYTE *buffer, ULONG bufferlen, int need_by
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
+
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
+
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
+
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
             ide_put_and_incr(src, data);
