@@ -1213,12 +1213,24 @@ static void ide_get_data(volatile struct IDE *interface,UBYTE *buffer,ULONG buff
 
     KDEBUG(("ide_get_data(intf=%p, buf=%p, len=%lu, need_byteswap=%d)\n", interface, buffer, bufferlen, need_byteswap));
 
+#if defined(MACHINE_MEGA_68000)
     DELAY_400NS; /* Added by STEVE CROMPTON 19/04/2025 - Fix for Mega-68030 SBC-3 @ 40MHz */
+#endif
 
 #if CONF_WITH_APOLLO_68080
     if (is_apollo_68080)
     {
         ide_get_data_32(interface, buffer, bufferlen, need_byteswap);
+        return;
+    }
+#endif
+
+#if defined(MACHINE_COMET68K) && COMET_CF_XFER_32BIT
+    if ((bufferlen & 0x1FF) == 0) {
+        /* COMET CF interfaces can support 32 bit reads/writes, as long as whole sectors are being
+         * transferred */
+        comet_cf_fast_read((void *)&interface->data, buffer, bufferlen, need_byteswap);
+
         return;
     }
 #endif
@@ -1413,6 +1425,16 @@ static void ide_put_data(volatile struct IDE *interface,UBYTE *buffer,ULONG buff
     XFERWIDTH *end;
     XFERWIDTH *p2;
     XFERWIDTH *end2 = (XFERWIDTH *)(buffer + bufferlen);
+
+#if defined(MACHINE_COMET68K) && COMET_CF_XFER_32BIT
+    if ((bufferlen & 0x1FF) == 0) {
+        /* COMET CF interfaces can support 32 bit reads/writes, as long as whole sectors are being
+         * transferred */
+        comet_cf_fast_write((void *)&interface->data, buffer, bufferlen, need_byteswap);
+
+        return;
+    }
+#endif
 
     if (need_byteswap) {
         end = (XFERWIDTH *)(buffer + (bufferlen & ~(16-1)));    /* mask must match unrolled loop */

@@ -32,6 +32,7 @@
 #define CONF_WITH_COMET_CF 1
 #define COMET_CF_BASE 0x00C50000
 #define COMET_CF_COUNT 4
+#define COMET_CF_XFER_32BIT 1
 
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
@@ -69,8 +70,8 @@
 #  define RS232_DEBUG_PRINT 0
 # endif
 # ifndef NS16C2552_DEBUG_PRINT
-#  define NS16C2552_DEBUG_PRINT 1
-#  define ENABLE_KDEBUG 1
+#  define NS16C2552_DEBUG_PRINT 0
+#  define ENABLE_KDEBUG 0
 # endif
 
 #ifndef CONF_WITH_FDC

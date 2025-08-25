@@ -73,7 +73,7 @@ set(bios_src
         bios/parport.c bios/screen.c bios/serport.c bios/sound.c bios/videl.c bios/vt52.c bios/xhdi.c
         bios/pmmu030.c bios/68040_pmmu.S bios/amiga.c bios/amiga2.S bios/spi_vamp.c
         bios/lisa.c bios/lisa2.S bios/delay.c bios/delayasm.S bios/sd.c bios/memory2.c bios/bootparams.c
-        bios/scsi.c bios/nova.c bios/dsp.c bios/dsp2.S bios/scsidriv.c bios/ns16c2552.c bios/dp8570.c
+        bios/scsi.c bios/nova.c bios/dsp.c bios/dsp2.S bios/scsidriv.c bios/ns16c2552.c bios/dp8570.c bios/comet_cf.c
 )
 
 if (COLDFIRE)
