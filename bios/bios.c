@@ -332,7 +332,6 @@ static void bios_init(void)
 #if CONF_WITH_NS16C2552
     if (has_ns16c2552)
     {
-        KDEBUG(("ns16c2552_init()\n"));
         ns16c2552_init();
     }
 #endif /* CONF_WITH_NS16C2552 */

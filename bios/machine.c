@@ -44,6 +44,7 @@
 #include "nova.h"
 #include "biosext.h"
 #include "amiga.h"
+#include "dp8570.h"
 
 #if CONF_WITH_ADVANCED_CPU
 UBYTE is_bus32; /* 1 if address bus is 32-bit, 0 if it is 24-bit */
@@ -639,6 +640,10 @@ void machine_detect(void)
     detect_icdrtc();
     KDEBUG(("has_icdrtc = %d\n", has_icdrtc));
 #endif /* CONF_WITH_ICDRTC */
+#if CONF_WITH_DP8570_RTC
+    if (!IS_ARANYM)
+        dp8570_detect_rtc();
+#endif /* CONF_WITH_DP8570_RTC */
 #if CONF_WITH_NVRAM
     detect_nvram();
 #endif

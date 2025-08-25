@@ -68,7 +68,7 @@ extern int has_duart;
 
 #if CONF_WITH_NS16C2552
 extern int has_ns16c2552;
-#endif
+#endif /* CONF_WITH_NS16C2552 */
 
 #if CONF_WITH_VME
 extern int has_vme;
@@ -110,6 +110,10 @@ extern int ultrasatan_id; /* in disk.c */
 #else
   #define HAS_ULTRASATAN_CLOCK 0
 #endif /* CONF_WITH_ULTRASATAN_CLOCK */
+
+#if CONF_WITH_DP8570_RTC
+extern int has_dp8570_rtc;
+#endif /* CONF_WITH_DP8570_RTC */
 
 #if CONF_WITH_NVRAM
 extern int has_nvram;     /* in nvram.c */

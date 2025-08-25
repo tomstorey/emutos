@@ -1,32 +1,58 @@
 #include "emutos.h"
 #include "vectors.h"
+#include "bios.h"
+#include "ikbd.h"
 #include "dp8570.h"
+
+
+#if CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC
+
+/* Globals which signal that a DP8570 timer and/or RTC are present */
+int has_dp8570_timer;
+int has_dp8570_rtc;
 
 /* Forward decls */
 static void interrupt(void);
+static void basic_config(void);
+static UWORD get_date(void);
+static UWORD get_time(void);
+
+void
+dp8570_detect_rtc(void)
+{
+    has_dp8570_rtc = 0;
+
+    /* Try to read the seconds register to avoid disturbing any flags set in other registers */
+    if (check_read_byte(DP8570_BASE + 6)) {
+        has_dp8570_rtc = 1;
+    }
+
+    KDEBUG(("has_dp8570_rtc = %d\n", has_dp8570_rtc));
+}
 
 void
 dp8570_init_system_timer(void)
 {
-    volatile UBYTE *base = (UBYTE *)DP8570_BASE;
+    KDEBUG(("dp8570_init_system_timer()\n"));
+
+    /* Apply basic configuration */
+    basic_config();
+
+    /* Perform configuration specific to the system timer */
+    struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
+    struct dp8570_txcr *t0cr = (void *)DP8570_BASE + DP8570_T0CR;
+    UBYTE *t0lsb = (void *)DP8570_BASE + DP8570_T0LSB;
+    UBYTE *t0msb = (void *)DP8570_BASE + DP8570_T0MSB;
 
     /* Ensure we are accessing the first set of registers */
-    *(base + DP8570_MSR) &= ~0x40;
+    msr->u8 &= ~0xC0;
 
     /* Configure Timer 0 to produce a 200hz (5ms) interrupt */
-    *(base + DP8570_T0CR) = 0x04;               /* TCK clock, mode 1 (pulse generator), timer stopped */
-    *(base + DP8570_IRR) = ~0x08;               /* Interrupt sourced from Timer 0 */
-
-    *(base + DP8570_MSR) |= 0x40;               /* Access second set of registers */
-    *(base + DP8570_OMR) = 0x73;                /* MFO pin is T0, MFO active high driven, INTR active low open drain */
-    *(base + DP8570_ICR0) = 0x40;               /* Timer 0 interrupt enable */
-    *(base + DP8570_ICR1) = 0;                  /* Disable alarms */
-
-    *(base + DP8570_MSR) &= ~0x40;              /* Back to first set of registers */
+    t0cr->u8 = 0x04;                            /* TCK clock, mode 1 (pulse generator), timer stopped */
 
 #if defined(MACHINE_COMET68K)
-    *(base + DP8570_T0LSB) = 0x1A;              /* Timer 0 prescaler: 625KHz / 200 = 3125 = 0x0C35 */
-    *(base + DP8570_T0MSB) = 0x06;
+    *t0lsb = 0x1A;                              /* Timer 0 prescaler: 625KHz / 200 = 3125 = 0x0C35 */
+    *t0msb = 0x06;
 #else
 #error "You need to define a prescaler for Timer 0 for your machine"
 #endif
@@ -40,7 +66,64 @@ dp8570_init_system_timer(void)
 #error "TODO: vectored interrupt for DP8570"
 #endif
 
-    *(base + DP8570_T0CR) = 0x05;               /* Start the timer */
+    t0cr->TSS = 1;                              /* Start the timer */
+}
+
+void
+dp8570_init_clock(void)
+{
+    KDEBUG(("dp8570_init_clock()\n"));
+
+    /* Apply basic configuration */
+    basic_config();
+
+    /* Nothing further to apply for clock configuration once the basics have been configured */
+}
+
+LONG
+dp8570_getdt(void)
+{
+    return MAKE_ULONG(get_date(), get_time());
+}
+
+/* Apply basic config to the DP8570, such as clock/oscillator sources, output modes, etc */
+static void
+basic_config(void)
+{
+    struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
+    struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    struct dp8570_irr *irr = (void *)DP8570_BASE + DP8570_IRR;
+    struct dp8570_omr *omr = (void *)DP8570_BASE + DP8570_OMR;
+    struct dp8570_icr0 *icr0 = (void *)DP8570_BASE + DP8570_ICR0;
+    struct dp8570_icr1 *icr1 = (void *)DP8570_BASE + DP8570_ICR1;
+
+    /* Access bank 0 */
+    msr->u8 &= ~0xC0;
+
+    /* Configure for battery backed mode */
+    pfr->u8 = 0;
+
+    /* INTR shall be sourced from timer 0 - all other sources routed to MFO pin */
+    irr->u8 = ~0x08;
+
+    /* Access bank 1 */
+    msr->RS = 1;
+
+    /* Configure the output modes for T1, INTR and MFO pins:
+     *
+     *  T1 drives the speaker, and is active high push-pull
+     *  INTR is active low open drain
+     *  MFO is active high push-pull */
+    omr->u8 = 0xB3;
+
+    /* Disable all interrupt sources, maintaining Timer 0 if enabled */
+    icr0->u8 &= 0x40;
+
+    /* Disable alarms */
+    icr1->u8 = 0;
+
+    /* Leave in bank 0 */
+    msr->RS = 0;
 }
 
 static void __attribute__((interrupt))
@@ -78,3 +161,57 @@ interrupt(void)
         }
     }
 }
+
+static UWORD
+get_date(void)
+{
+    /* Borrowed heavily from amiga_dogetdate() */
+
+    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    const UWORD days = *(rtc + 9);
+    const UWORD months = *(rtc + 0xA);
+    UWORD years = *(rtc + 0xB);
+    UWORD date;
+
+    KDEBUG(("dp8570 get_date() %02d/%02d/%02d\n", years, months, days));
+
+    if (years >= 78) {
+        years += 1900;
+    } else {
+        years += 2000;
+    }
+
+    if (years < 1980) {
+        /* This date can't be represented in BDOS format. */
+        return HIWORD(DEFAULT_DATETIME);
+    }
+
+    /* Packed bit format: YYYYYYYMMMMDDDDD */
+    date = (days & 0x1F) | (months & 0xF) << 5 | (years - 1980) << 9;
+
+    return date;
+}
+
+static UWORD
+get_time(void)
+{
+    /* Borrowed heavily from amiga_dogetdate() */
+
+    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    const UWORD seconds = *(rtc + 6);
+    const UWORD minutes = *(rtc + 7);
+    const UWORD hours = *(rtc + 8);
+    UWORD time;
+
+    KDEBUG(("dp8570 get_time() %02d:%02d:%02d\n", hours, minutes, seconds));
+
+    /* Packed bit format: HHHHHMMMMMMSSSSS */
+    time = seconds | minutes << 5 | hours << 11;
+
+    return time;
+}
+
+
+#endif /* CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC */

@@ -28,6 +28,7 @@
 #define CONF_WITH_DP8570_TIMER 1
 #define DP8570_BASE 0x00C30000
 #define CONF_DP8570_AUTOVECTOR 1                /* Define and set to the IRQ level for autovectored timer interrupt */
+#define CONF_WITH_DP8570_RTC 1
 
 #define CONF_WITH_COMET_CF 1
 #define COMET_CF_BASE 0x00C50000
@@ -70,8 +71,8 @@
 #  define RS232_DEBUG_PRINT 0
 # endif
 # ifndef NS16C2552_DEBUG_PRINT
-#  define NS16C2552_DEBUG_PRINT 0
-#  define ENABLE_KDEBUG 0
+#  define NS16C2552_DEBUG_PRINT 1
+#  define ENABLE_KDEBUG 1
 # endif
 
 #ifndef CONF_WITH_FDC

@@ -40,6 +40,8 @@ static void interrupt_ch_b(ULONG source);
 
 void ns16c2552_init(void)
 {
+    KDEBUG(("ns16c2552_init()\n"));
+
     struct ns16c2552_ier *ier = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_IER_REG);
     struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
     struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);

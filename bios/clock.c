@@ -35,8 +35,9 @@
 #include "lisa.h"
 #include "disk.h"
 #include "acsi.h"
+#include "dp8570.h"
 
-#if (CONF_WITH_MONSTER || CONF_WITH_IKBD_CLOCK || CONF_WITH_MFP_DS3231)
+#if (CONF_WITH_MONSTER || CONF_WITH_IKBD_CLOCK || CONF_WITH_MFP_DS3231 || CONF_WITH_DP8570_RTC)
 static UBYTE int2bcd(UWORD a)
 {
     return (a % 10) + ((a / 10) << 4);
@@ -48,7 +49,7 @@ static UWORD bcd2int(UBYTE a)
 }
 #endif
 
-#if (CONF_WITH_ICDRTC || CONF_WITH_MONSTER || CONF_WITH_MEGARTC || CONF_WITH_NVRAM || CONF_WITH_IKBD_CLOCK || CONF_WITH_ULTRASATAN_CLOCK || CONF_WITH_MFP_DS3231)
+#if (CONF_WITH_ICDRTC || CONF_WITH_MONSTER || CONF_WITH_MEGARTC || CONF_WITH_NVRAM || CONF_WITH_IKBD_CLOCK || CONF_WITH_ULTRASATAN_CLOCK || CONF_WITH_MFP_DS3231 || CONF_WITH_DP8570_RTC)
 /*
  * structures used by extract_date(), extract_time()
  */
@@ -1246,6 +1247,9 @@ static ULONG ultrasatan_setdt(ULONG dt)
 
 #endif /* CONF_WITH_ULTRASATAN_CLOCK */
 
+#if CONF_WITH_DP8570_RTC
+#endif /* CONF_WITH_DP8570_RTC */
+
 /* internal init */
 
 void clock_init(void)
@@ -1264,6 +1268,12 @@ void clock_init(void)
     {
         /* Dummy case for conditional compilation */
     }
+#if CONF_WITH_DP8570_RTC
+    else if (has_dp8570_rtc)
+    {
+        dp8570_init_clock();
+    }
+#endif /* CONF_WITH_DP8570_RTC */
 #ifdef MACHINE_AMIGA
     else if (TRUE)
     {
@@ -1424,6 +1434,12 @@ LONG gettime(void)
         return ultrasatan_getdt();
     }
 #endif /* CONF_WITH_ULTRASATAN_CLOCK */
+#if CONF_WITH_DP8570_RTC
+    else if (has_dp8570_rtc)
+    {
+        return dp8570_getdt();
+    }
+#endif /* CONF_WITH_DP8570_RTC */
     else
     {
 #if CONF_WITH_IKBD_CLOCK

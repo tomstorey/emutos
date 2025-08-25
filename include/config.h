@@ -1055,6 +1055,19 @@
 #endif
 
 /*
+ * Set CONF_WITH_DP8570_RTC to 1 to enable real time clock support using a DP8570.
+ *
+ * NOTE: The base address of the DP8570 may already be defined if CONF_WITH_DP8570_TIMER
+ *       is enabled, and if it is the base address defined there will apply for the RTC
+ */
+#ifndef CONF_WITH_DP8570_RTC
+# define CONF_WITH_DP8570_RTC 0
+# ifndef DP8570_BASE
+# define DP8570_BASE 0
+# endif
+#endif
+
+/*
  * Set CONF_WITH_COLDFIRE_RS232 to 1 to use the internal ColdFire serial port
  */
 #ifndef CONF_WITH_COLDFIRE_RS232
@@ -1167,7 +1180,7 @@
 #endif
 
 /*
- * Set CONF_WITH_COMET_CF to 1 to activate COMET Compact Flash interface support
+ * Set CONF_WITH_COMET_CF to 1 to enable COMET Compact Flash interface support
  */
 #ifndef CONF_WITH_COMET_CF
 # define CONF_WITH_COMET_CF 0
