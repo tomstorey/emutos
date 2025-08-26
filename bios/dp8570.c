@@ -16,6 +16,8 @@ static void interrupt(void);
 static void basic_config(void);
 static UWORD get_date(void);
 static UWORD get_time(void);
+static UBYTE int2bcd(UWORD a);
+static UWORD bcd2int(UBYTE a);
 
 void
 dp8570_detect_rtc(void)
@@ -110,6 +112,9 @@ dp8570_init_clock(void)
         } else {
             KDEBUG(("dp8570_init_clock(): clock is running\n"));
         }
+
+        /* Leave in bank 0 */
+        msr->RS = 0;
     }
 }
 
@@ -123,6 +128,15 @@ dp8570_getdt(void)
 static void
 basic_config(void)
 {
+    /* Run basic config only once */
+    static UBYTE configured = 0;
+
+    if (configured) {
+        return;
+    }
+
+    configured = 1;
+
     struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
     struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
     struct dp8570_irr *irr = (void *)DP8570_BASE + DP8570_IRR;
@@ -143,7 +157,7 @@ basic_config(void)
     /* Access bank 1 */
     msr->RS = 1;
 
-    /* The clock should be in 24 hour mode, and running from a 32678Hz crystal. Interrupts and timers do not
+    /* The clock should be in 24 hour mode, and running from a 32768Hz crystal. Interrupts and timers do not
      * function in the standby state. Keep the state of the CSS bit. */
     rtmr->u8 &= 0x08;
 
@@ -205,12 +219,22 @@ get_date(void)
 {
     /* Borrowed heavily from amiga_dogetdate() */
 
-    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
-    const UWORD days = *(rtc + 9);
-    const UWORD months = *(rtc + 0xA);
-    UWORD years = *(rtc + 0xB);
+    UWORD days;
+    UWORD months;
+    UWORD years;
     UWORD date;
+
+    do {
+        days = *(rtc + 9);
+        months = *(rtc + 0xA);
+        years = *(rtc + 0xB);
+    } while (days != *(rtc + 9));
+
+    days = bcd2int(days);
+    months = bcd2int(months);
+    years = bcd2int(years);
 
     KDEBUG(("dp8570 get_date() %02d/%02d/%02d\n", years, months, days));
 
@@ -236,12 +260,22 @@ get_time(void)
 {
     /* Borrowed heavily from amiga_dogettime() */
 
-    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
-    const UWORD seconds = *(rtc + 6);
-    const UWORD minutes = *(rtc + 7);
-    const UWORD hours = *(rtc + 8);
+    UWORD seconds;
+    UWORD minutes;
+    UWORD hours;
     UWORD time;
+
+    do {
+        seconds = *(rtc + 6);
+        minutes = *(rtc + 7);
+        hours = *(rtc + 8);
+    } while (seconds != *(rtc + 6));
+
+    seconds = bcd2int(seconds);
+    minutes = bcd2int(minutes);
+    hours = bcd2int(hours);
 
     KDEBUG(("dp8570 get_time() %02d:%02d:%02d\n", hours, minutes, seconds));
 
@@ -251,5 +285,17 @@ get_time(void)
     return time;
 }
 
+/* int2bcd() is borrowed from clock.c because it is declared static there */
+static UBYTE
+int2bcd(UWORD a)
+{
+    return (a % 10) + ((a / 10) << 4);
+}
 
+/* bcd2int() is borrowed from clock.c because it is declared static there */
+static UWORD
+bcd2int(UBYTE a)
+{
+    return (a & 0xf) + ((a >> 4) * 10);
+}
 #endif /* CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC */

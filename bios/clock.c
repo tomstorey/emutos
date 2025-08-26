@@ -37,7 +37,7 @@
 #include "acsi.h"
 #include "dp8570.h"
 
-#if (CONF_WITH_MONSTER || CONF_WITH_IKBD_CLOCK || CONF_WITH_MFP_DS3231 || CONF_WITH_DP8570_RTC)
+#if (CONF_WITH_MONSTER || CONF_WITH_IKBD_CLOCK || CONF_WITH_MFP_DS3231)
 static UBYTE int2bcd(UWORD a)
 {
     return (a % 10) + ((a / 10) << 4);
