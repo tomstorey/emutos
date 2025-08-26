@@ -184,7 +184,7 @@ struct dp8570_icr1 {
 void dp8570_detect_rtc(void);
 void dp8570_init_system_timer(void);
 void dp8570_init_clock(void);
-LONG dp8570_getdt(void);
+ULONG dp8570_getdt(void);
 
 #endif /* CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC */
 

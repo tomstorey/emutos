@@ -13,8 +13,6 @@ int has_dp8570_rtc;
 /* Forward decls */
 static void interrupt(void);
 static void basic_config(void);
-static UWORD get_date(void);
-static UWORD get_time(void);
 static UBYTE int2bcd(UWORD a);
 static UWORD bcd2int(UBYTE a);
 
@@ -126,10 +124,70 @@ dp8570_init_clock(void)
     }
 }
 
-LONG
+ULONG
 dp8570_getdt(void)
 {
-    return MAKE_ULONG(get_date(), get_time());
+    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    UWORD seconds;
+    UWORD minutes;
+    UWORD hours;
+    UWORD days;
+    UWORD months;
+    UWORD years;
+    UWORD date, time;
+
+    /* I had a right old time trying to get this routine to return the correct value. Until I declared
+     * dt as "long unsigned int", the upper 16 bits would be cleared from the return value. */
+    long unsigned int dt = 0;
+
+    do {
+        seconds = *(rtc + DP8570_SEC);
+        minutes = *(rtc + DP8570_MIN);
+        hours = *(rtc + DP8570_HR);
+        days = *(rtc + DP8570_DAY);
+        months = *(rtc + DP8570_MON);
+        years = *(rtc + DP8570_YR);
+    } while (seconds != *(rtc + DP8570_SEC));
+
+    seconds = bcd2int(seconds);
+    minutes = bcd2int(minutes);
+    hours = bcd2int(hours);
+    days = bcd2int(days);
+    months = bcd2int(months);
+    years = bcd2int(years);
+
+    /* Portions borrowed from amiga_dogetdate() and amiga_dogettime() */
+
+    if (years >= 78) {
+        years += 1900;
+    } else {
+        years += 2000;
+    }
+
+    if (years < 1980) {
+        /* This date can't be represented in BDOS format. */
+        KDEBUG(("dp8570_getdt(): years < 1980, early exit with DEFAULT_DATETIME\n"));
+
+        return HIWORD(DEFAULT_DATETIME);
+    }
+
+    KDEBUG(("dp8570_getdt(): %04d/%02d/%02d %02d:%02d:%02d\n", years, months, days, hours, minutes, seconds));
+
+    /* Packed bit format: YYYYYYYMMMMDDDDD */
+    date = (days & 0x1F) | (months & 0xF) << 5 | ((years - 1980) & 0x7F) << 9;
+
+    /* Packed bit format: HHHHHMMMMMMSSSSS */
+    time = (seconds & 0x3F) >> 1 | (minutes & 0x3F) << 5 | (hours & 0x1F) << 11;
+
+    dt = MAKE_ULONG(date, time);
+
+    // /* Packed bit format: YYYYYYYMMMMDDDDDHHHHHMMMMMMSSSSS */
+    // /* Gives "left shift count >= width of type" warnings ... */
+    // dt = (seconds & 0x3F) >> 1 | (minutes & 0x3F) << 5 | (hours & 0x1F) << 11 |
+    //      (days & 0x1F) << 16 | (months & 0xF) << 21 | ((years - 1980) & 0x7F) << 24;
+
+    return dt;
 }
 
 /* Apply basic config to the DP8570, such as clock/oscillator sources, output modes, etc */
@@ -220,77 +278,6 @@ interrupt(void)
             );
         }
     }
-}
-
-static UWORD
-get_date(void)
-{
-    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
-
-    UWORD days;
-    UWORD months;
-    UWORD years;
-    UWORD date;
-
-    do {
-        days = *(rtc + DP8570_DAY);
-        months = *(rtc + DP8570_MON);
-        years = *(rtc + DP8570_YR);
-    } while (days != *(rtc + DP8570_DAY));
-
-    days = bcd2int(days);
-    months = bcd2int(months);
-    years = bcd2int(years);
-
-    KDEBUG(("dp8570 get_date() %02d/%02d/%02d\n", years, months, days));
-
-    /* Borrowed from amiga_dogetdate() */
-
-    if (years >= 78) {
-        years += 1900;
-    } else {
-        years += 2000;
-    }
-
-    if (years < 1980) {
-        /* This date can't be represented in BDOS format. */
-        return HIWORD(DEFAULT_DATETIME);
-    }
-
-    /* Packed bit format: YYYYYYYMMMMDDDDD */
-    date = (days & 0x1F) | (months & 0xF) << 5 | ((years - 1980) & 0x7F) << 9;
-
-    return date;
-}
-
-static UWORD
-get_time(void)
-{
-    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
-
-    UWORD seconds;
-    UWORD minutes;
-    UWORD hours;
-    UWORD time;
-
-    do {
-        seconds = *(rtc + DP8570_SEC);
-        minutes = *(rtc + DP8570_MIN);
-        hours = *(rtc + DP8570_HR);
-    } while (seconds != *(rtc + DP8570_SEC));
-
-    seconds = bcd2int(seconds);
-    minutes = bcd2int(minutes);
-    hours = bcd2int(hours);
-
-    KDEBUG(("dp8570 get_time() %02d:%02d:%02d\n", hours, minutes, seconds));
-
-    /* Borrowed from amiga_dogettime() */
-
-    /* Packed bit format: HHHHHMMMMMMSSSSS */
-    time = ((seconds >> 1) & 0x1F) | (minutes & 0x3F) << 5 | (hours & 0x1F) << 11;
-
-    return time;
 }
 
 /* int2bcd() is borrowed from clock.c because it is declared static there */
