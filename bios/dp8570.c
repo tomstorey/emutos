@@ -136,10 +136,7 @@ dp8570_getdt(void)
     UWORD months;
     UWORD years;
     UWORD date, time;
-
-    /* I had a right old time trying to get this routine to return the correct value. Until I declared
-     * dt as "long unsigned int", the upper 16 bits would be cleared from the return value. */
-    long unsigned int dt = 0;
+    ULONG dt = 0;
 
     do {
         seconds = *(rtc + DP8570_SEC);
