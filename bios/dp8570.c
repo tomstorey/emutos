@@ -4,7 +4,6 @@
 #include "ikbd.h"
 #include "dp8570.h"
 
-
 #if CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC
 
 /* Globals which signal that a DP8570 timer and/or RTC are present */
@@ -217,8 +216,6 @@ interrupt(void)
 static UWORD
 get_date(void)
 {
-    /* Borrowed heavily from amiga_dogetdate() */
-
     const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
     UWORD days;
@@ -237,6 +234,8 @@ get_date(void)
     years = bcd2int(years);
 
     KDEBUG(("dp8570 get_date() %02d/%02d/%02d\n", years, months, days));
+
+    /* Borrowed from amiga_dogetdate() */
 
     if (years >= 78) {
         years += 1900;
@@ -258,8 +257,6 @@ get_date(void)
 static UWORD
 get_time(void)
 {
-    /* Borrowed heavily from amiga_dogettime() */
-
     const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
     UWORD seconds;
@@ -278,6 +275,8 @@ get_time(void)
     hours = bcd2int(hours);
 
     KDEBUG(("dp8570 get_time() %02d:%02d:%02d\n", hours, minutes, seconds));
+
+    /* Borrowed from amiga_dogettime() */
 
     /* Packed bit format: HHHHHMMMMMMSSSSS */
     time = seconds | minutes << 5 | hours << 11;
@@ -298,4 +297,5 @@ bcd2int(UBYTE a)
 {
     return (a & 0xf) + ((a >> 4) * 10);
 }
+
 #endif /* CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC */
