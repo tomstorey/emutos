@@ -42,14 +42,15 @@ dp8570_init_system_timer(void)
     /* Perform configuration specific to the system timer */
     struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
     struct dp8570_txcr *t0cr = (void *)DP8570_BASE + DP8570_T0CR;
-    UBYTE *t0lsb = (void *)DP8570_BASE + DP8570_T0LSB;
-    UBYTE *t0msb = (void *)DP8570_BASE + DP8570_T0MSB;
+    struct dp8570_icr0 *icr0 = (void *)DP8570_BASE + DP8570_ICR0;
+    volatile UBYTE *t0lsb = (void *)DP8570_BASE + DP8570_T0LSB;
+    volatile UBYTE *t0msb = (void *)DP8570_BASE + DP8570_T0MSB;
 
     /* Ensure we are accessing the first set of registers */
-    msr->u8 &= ~0xC0;
+    msr->u8 = 0;
 
     /* Configure Timer 0 to produce a 200hz (5ms) interrupt */
-    t0cr->u8 = 0x04;                            /* TCK clock, mode 1 (pulse generator), timer stopped */
+    t0cr->u8 = 0x04;                            /* TCK clock, mode 2 (square wave), timer stopped */
 
 #if defined(MACHINE_COMET68K)
     *t0lsb = 0x1A;                              /* Timer 0 prescaler: 625KHz / 200 = 3125 = 0x0C35 */
@@ -68,6 +69,14 @@ dp8570_init_system_timer(void)
 #endif
 
     t0cr->TSS = 1;                              /* Start the timer */
+
+    /* Access bank 1 */
+    msr->u8 = 0x40;
+
+    icr0->ENT0 = 1;                             /* Enable Timer 0 interrupt */
+
+    /* Leave in bank 0 */
+    msr->u8 = 0;
 }
 
 void
@@ -81,17 +90,17 @@ dp8570_init_clock(void)
     struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
     const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
     struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
-    const UBYTE *rtc = (UBYTE *)DP8570_BASE;
+    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
     ULONG ctr;
 
     /* Ensure we are accessing the first set of registers */
-    msr->u8 &= ~0xC0;
+    msr->u8 = 0;
 
     if (pfr->OSF) {
         KDEBUG(("dp8570_init_clock(): oscillator fail event, attempting to start clock\n"));
 
-        msr->RS = 1;
+        msr->u8 = 0x40;
         rtmr->CSS = 1;
 
         /* Fortunately the DP8570 has a register that counts 1/100's of a second, so we should be able to observe
@@ -113,7 +122,7 @@ dp8570_init_clock(void)
         }
 
         /* Leave in bank 0 */
-        msr->RS = 0;
+        msr->u8 = 0;
     }
 }
 
@@ -145,7 +154,7 @@ basic_config(void)
     struct dp8570_icr1 *icr1 = (void *)DP8570_BASE + DP8570_ICR1;
 
     /* Access bank 0 */
-    msr->u8 &= ~0xC0;
+    msr->u8 = 0;
 
     /* Configure for battery backed mode */
     pfr->u8 = 0;
@@ -154,7 +163,7 @@ basic_config(void)
     irr->u8 = ~0x08;
 
     /* Access bank 1 */
-    msr->RS = 1;
+    msr->u8 = 0x40;
 
     /* The clock should be in 24 hour mode, and running from a 32768Hz crystal. Interrupts and timers do not
      * function in the standby state. Keep the state of the CSS bit. */
@@ -174,7 +183,7 @@ basic_config(void)
     icr1->u8 = 0;
 
     /* Leave in bank 0 */
-    msr->RS = 0;
+    msr->u8 = 0;
 }
 
 static void __attribute__((interrupt))
