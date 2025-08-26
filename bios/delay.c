@@ -20,6 +20,7 @@
 #include "mfp.h"
 #include "serport.h"
 #include "processor.h"
+#include "dp8570.h"
 #include "delay.h"
 #include "coldfire.h" /* For cookie jar info. */
 
@@ -129,6 +130,8 @@ void calibrate_delay(void)
         loopcount_1_msec = (loopcount * 24) / (intcount * 25);
 #elif defined(__mcoldfire__)
     loopcount_1_msec = (ULONG)cookie_mcf.sysbus_frequency * 1000;
+#elif CONF_WITH_DP8570_TIMER
+    loopcount_1_msec = dp8570_1ms_loop_calibration();
 #else
     KDEBUG(("Warning: loopcount_1_msec isn't calibrated.\n"));
 #endif

@@ -1378,6 +1378,12 @@ void settime(LONG time)
         ultrasatan_setdt(time);
     }
 #endif /* CONF_WITH_ULTRASATAN_CLOCK */
+#if CONF_WITH_DP8570_RTC
+    else if (has_dp8570_rtc)
+    {
+        dp8570_setdt(time);
+    }
+#endif /* CONF_WITH_DP8570_RTC */
     else
     {
 #if CONF_WITH_IKBD_CLOCK

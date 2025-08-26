@@ -185,6 +185,8 @@ void dp8570_detect_rtc(void);
 void dp8570_init_system_timer(void);
 void dp8570_init_clock(void);
 ULONG dp8570_getdt(void);
+void dp8570_setdt(ULONG time);
+ULONG dp8570_1ms_loop_calibration(void);
 
 #endif /* CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC */
 

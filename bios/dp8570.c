@@ -1,7 +1,9 @@
 #include "emutos.h"
 #include "vectors.h"
-#include "bios.h"
-#include "ikbd.h"
+// #include "bios.h"
+// #include "ikbd.h"
+#include "asm.h"
+#include "delay.h"
 #include "dp8570.h"
 
 #if CONF_WITH_DP8570_TIMER || CONF_WITH_DP8570_RTC
@@ -127,6 +129,7 @@ dp8570_init_clock(void)
 ULONG
 dp8570_getdt(void)
 {
+    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
     const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
     UWORD seconds;
@@ -138,6 +141,10 @@ dp8570_getdt(void)
     UWORD date, time;
     ULONG dt = 0;
 
+    /* Dummy read the Periodic Flag register to clear all flags */
+    (void)pfr->u8;
+
+    /* Read registers, and re-read them if the seconds flag is set (rollover event) */
     do {
         seconds = *(rtc + DP8570_SEC);
         minutes = *(rtc + DP8570_MIN);
@@ -145,7 +152,7 @@ dp8570_getdt(void)
         days = *(rtc + DP8570_DAY);
         months = *(rtc + DP8570_MON);
         years = *(rtc + DP8570_YR);
-    } while (seconds != *(rtc + DP8570_SEC));
+    } while (pfr->PF1S);
 
     seconds = bcd2int(seconds);
     minutes = bcd2int(minutes);
@@ -160,13 +167,6 @@ dp8570_getdt(void)
         years += 1900;
     } else {
         years += 2000;
-    }
-
-    if (years < 1980) {
-        /* This date can't be represented in BDOS format. */
-        KDEBUG(("dp8570_getdt(): years < 1980, early exit with DEFAULT_DATETIME\n"));
-
-        return HIWORD(DEFAULT_DATETIME);
     }
 
     KDEBUG(("dp8570_getdt(): %04d/%02d/%02d %02d:%02d:%02d\n", years, months, days, hours, minutes, seconds));
@@ -185,6 +185,109 @@ dp8570_getdt(void)
     //      (days & 0x1F) << 16 | (months & 0xF) << 21 | ((years - 1980) & 0x7F) << 24;
 
     return dt;
+}
+
+void
+dp8570_setdt(ULONG time)
+{
+    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    UBYTE seconds;
+    UBYTE minutes;
+    UBYTE hours;
+    UBYTE days;
+    UBYTE months;
+    UWORD years;
+
+    /* Packed bit format: YYYYYYYMMMMDDDDDHHHHHMMMMMMSSSSS */
+    seconds = (time & 0x1F) << 1;
+    minutes = (time >> 5) & 0x3F;
+    hours = (time >> 11) & 0x1F;
+    days = (time >> 16) & 0x1F;
+    months = (time >> 21) & 0xF;
+    years = 1980 + ((time >> 25) & 0x7F);
+
+    KDEBUG(("dp8570_setdt(): %04d/%02d/%02d %02d:%02d:%02d\n", years, months, days, hours, minutes, seconds));
+
+    if (years >= 2000 && years <= 2077) {
+        years -= 2000;
+    } else {
+        years -= 1900;
+    }
+
+    seconds = int2bcd(seconds);
+    minutes = int2bcd(minutes);
+    hours = int2bcd(hours);
+    days = int2bcd(days);
+    months = int2bcd(months);
+    years = int2bcd(years);
+
+    /* The datasheet suggests an algorithm for updating the clock registers without stopping the clock.
+     * This seems like it may be necessary, because stopping the clock once the timer has been started
+     * appears to affect its frequency, and it'll be a bit of a pain to re-initialise everything again.
+     *
+     * The algorithm is to wait for the 10ms periodic flag, then an additional 15uS. So we'll wait for
+     * the 10ms flag, then delay 1ms and then write to the registers. */
+
+    /* Dummy read Periodic Flags to reset them */
+    (void)pfr->u8;
+
+    /* Wait for the 10ms flag to be set */
+    while (!pfr->PF10MS) {}
+
+    /* Then delay 1ms */
+    delay_loop(loopcount_1_msec);
+
+    /* Then write new time */
+    *(rtc + DP8570_SEC) = seconds;
+    *(rtc + DP8570_MIN) = minutes;
+    *(rtc + DP8570_HR) = hours;
+    *(rtc + DP8570_DAY) = days;
+    *(rtc + DP8570_MON) = months;
+    *(rtc + DP8570_YR) = years;
+}
+
+ULONG
+dp8570_1ms_loop_calibration(void)
+{
+    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    ULONG result;
+
+    /* For saving the CPU Status Register and IPL when entering/exiting critical sections */
+    WORD old_sr;
+
+    /* Enter critical section - disable interrupts so they don't interfere with the measurement - max ~2ms */
+    old_sr = set_sr(0x2700);
+
+    /* The DP8570 contains a variety of flags which signal various periods of time, one of which
+     * is a 1ms interval. Use this flag to calibrate the 1ms software loop. */
+    asm volatile (
+        "   move.b  (%1), d0            \n\t"   /* Dummy read Periodic Flags to reset them */
+        "   moveq.l #0, d1              \n\t"   /* Clear D1 to use as a counter */
+
+        "0: btst    #5, (%1)            \n\t"   /* Wait for the 1ms flag to set */
+        "   beq     0b                  \n\t"
+
+        "1: addq.l  #1, d1              \n\t"   /* Increment until the 1ms flag is set again */
+        "   btst    #5, (%1)            \n\t"
+        "   beq     1b                  \n\t"
+
+        "   lsl.l   #1, d1              \n\t"   /* The loop contains two instructions, so double the result as a cheap
+                                                 * form of compensation */
+
+        "   move.l  d1, %0              \n\t"
+        :"=mr"(result)
+        :"a"(pfr)
+        :"d0", "d1"
+    );
+
+    /* Exit critical section */
+    (void)set_sr(old_sr);
+
+    KDEBUG(("dp8570_1ms_loop_calibration(): %lu\n", result));
+
+    return result;
 }
 
 /* Apply basic config to the DP8570, such as clock/oscillator sources, output modes, etc */
