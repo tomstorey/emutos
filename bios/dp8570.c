@@ -233,10 +233,10 @@ get_date(void)
     UWORD date;
 
     do {
-        days = *(rtc + 9);
-        months = *(rtc + 0xA);
-        years = *(rtc + 0xB);
-    } while (days != *(rtc + 9));
+        days = *(rtc + DP8570_DAY);
+        months = *(rtc + DP8570_MON);
+        years = *(rtc + DP8570_YR);
+    } while (days != *(rtc + DP8570_DAY));
 
     days = bcd2int(days);
     months = bcd2int(months);
@@ -258,7 +258,7 @@ get_date(void)
     }
 
     /* Packed bit format: YYYYYYYMMMMDDDDD */
-    date = (days & 0x1F) | (months & 0xF) << 5 | (years - 1980) << 9;
+    date = (days & 0x1F) | (months & 0xF) << 5 | ((years - 1980) & 0x7F) << 9;
 
     return date;
 }
@@ -274,10 +274,10 @@ get_time(void)
     UWORD time;
 
     do {
-        seconds = *(rtc + 6);
-        minutes = *(rtc + 7);
-        hours = *(rtc + 8);
-    } while (seconds != *(rtc + 6));
+        seconds = *(rtc + DP8570_SEC);
+        minutes = *(rtc + DP8570_MIN);
+        hours = *(rtc + DP8570_HR);
+    } while (seconds != *(rtc + DP8570_SEC));
 
     seconds = bcd2int(seconds);
     minutes = bcd2int(minutes);
@@ -288,7 +288,7 @@ get_time(void)
     /* Borrowed from amiga_dogettime() */
 
     /* Packed bit format: HHHHHMMMMMMSSSSS */
-    time = seconds | minutes << 5 | hours << 11;
+    time = ((seconds >> 1) & 0x1F) | (minutes & 0x3F) << 5 | (hours & 0x1F) << 11;
 
     return time;
 }
