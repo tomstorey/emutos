@@ -1,7 +1,5 @@
 #include "emutos.h"
 #include "vectors.h"
-// #include "bios.h"
-// #include "ikbd.h"
 #include "asm.h"
 #include "delay.h"
 #include "dp8570.h"
@@ -24,7 +22,7 @@ dp8570_detect_rtc(void)
     has_dp8570_rtc = 0;
 
     /* Try to read the seconds register to avoid disturbing any flags set in other registers */
-    if (check_read_byte(DP8570_BASE + 6)) {
+    if (check_read_byte(DP8570_BASE + DP8570_SEC)) {
         has_dp8570_rtc = 1;
     }
 
@@ -106,10 +104,10 @@ dp8570_init_clock(void)
         /* Fortunately the DP8570 has a register that counts 1/100's of a second, so we should be able to observe
          * this register before and after some delay to see if it changes, and this may indicate that the clock is
          * running again */
-        const UBYTE before = *(rtc + 5);
+        const UBYTE before = *(rtc + DP8570_FRAC);
 
         for (ctr = 0xFFFFFF; ctr; ctr--) {
-            if (*(rtc + 5) != before) {
+            if (*(rtc + DP8570_FRAC) != before) {
                 break;
             }
         }
@@ -191,6 +189,7 @@ void
 dp8570_setdt(ULONG time)
 {
     const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
     volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
 
     UBYTE seconds;
@@ -199,6 +198,7 @@ dp8570_setdt(ULONG time)
     UBYTE days;
     UBYTE months;
     UWORD years;
+    UBYTE leap;
 
     /* Packed bit format: YYYYYYYMMMMDDDDDHHHHHMMMMMMSSSSS */
     seconds = (time & 0x1F) << 1;
@@ -209,6 +209,10 @@ dp8570_setdt(ULONG time)
     years = 1980 + ((time >> 25) & 0x7F);
 
     KDEBUG(("dp8570_setdt(): %04d/%02d/%02d %02d:%02d:%02d\n", years, months, days, hours, minutes, seconds));
+
+    /* The DP8570 needs to be told when the last leap year was. The range of our clock is 1978 (Amiga epoch) to 2077,
+     * and since 2000 was a leap year (divisible by 400) the calculation is pretty simple. */
+    leap = years % 4;
 
     if (years >= 2000 && years <= 2077) {
         years -= 2000;
@@ -246,6 +250,7 @@ dp8570_setdt(ULONG time)
     *(rtc + DP8570_DAY) = days;
     *(rtc + DP8570_MON) = months;
     *(rtc + DP8570_YR) = years;
+    rtmr->LY = leap;
 }
 
 ULONG

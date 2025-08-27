@@ -26,6 +26,7 @@
 # define DP8570_T1LSB 0x11
 # define DP8570_T1MSB 0x12
 
+# define DP8570_FRAC 5
 # define DP8570_SEC 6
 # define DP8570_MIN 7
 # define DP8570_HR 8
