@@ -218,25 +218,6 @@ static void detect_duart(void)
 
 #endif /* CONF_WITH_DUART */
 
-#if CONF_WITH_NS16C2552
-int has_ns16c2552;
-
-static void detect_ns16c2552(void)
-{
-    has_ns16c2552 = 0;
-
-    /* The NS16C2552 and compatibles have two identical channels, and both contain a scratch byte. Try to read this
-     * byte from both channels to determine if a 16C2552 is present. First channel B then channel A. */
-    if (check_read_byte(NS16C2552_BASE + NS16C2552_SCR_REG)) {
-        if (check_read_byte(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_SCR_REG)) {
-            has_ns16c2552 = 1;
-        }
-    }
-
-    KDEBUG(("has_ns16c2552 = %d\n", has_ns16c2552));
-}
-#endif /* CONF_WITH_NS16C2552 */
-
 #if CONF_WITH_VME
 
 int has_vme;
@@ -625,7 +606,7 @@ void machine_detect(void)
 #endif
 #if CONF_WITH_NS16C2552
     if (!IS_ARANYM)
-        detect_ns16c2552();
+        ns16c2552_detect();
 #endif
 #if CONF_WITH_VME
     if (!IS_ARANYM)

@@ -33,10 +33,28 @@ static const WORD ns16c2552_timeconst[] = {
     /*  78600 */  6         /* Actual: 76800, 2.34% error */
 };
 
+/* Global that indicates that an NS16C2552 UART has been detected */
+int has_ns16c2552;
+
 /* Forward decls */
 static void interrupt(void);
 // static void interrupt_ch_a(ULONG source);
 static void interrupt_ch_b(ULONG source);
+
+void ns16c2552_detect(void)
+{
+    has_ns16c2552 = 0;
+
+    /* The NS16C2552 and compatibles have two identical channels, and both contain a scratch byte. Try to read this
+     * byte from both channels to determine if a 16C2552 is present. First channel B then channel A. */
+    if (check_read_byte(NS16C2552_BASE + NS16C2552_SCR_REG)) {
+        if (check_read_byte(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_SCR_REG)) {
+            has_ns16c2552 = 1;
+        }
+    }
+
+    KDEBUG(("has_ns16c2552 = %d\n", has_ns16c2552));
+}
 
 void ns16c2552_init(void)
 {

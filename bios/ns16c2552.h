@@ -186,6 +186,7 @@ struct nc16c2552_afr {
     };
 } __attribute__((packed));
 
+void ns16c2552_detect(void);
 void ns16c2552_init(void);
 void ns16c2552_tx(void *base, EXT_IOREC *iorec, UBYTE data);
 ULONG ns16c2552_rsconf(void *port, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
