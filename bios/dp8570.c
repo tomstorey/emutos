@@ -278,13 +278,27 @@ dp8570_1ms_loop_calibration(void)
         "   btst    #5, (%1)            \n\t"
         "   beq     1b                  \n\t"
 
-        "   lsl.l   #1, d1              \n\t"   /* The loop contains two instructions, so double the result as a cheap
-                                                 * form of compensation */
+        /* Attempt to refine the loop count - based on a 68000 @ 20MHz */
+        "   move.l  d1, d2              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Add 1/8 */
+        "   add.l   d2, d1              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Add 1/4 */
+        "   add.l   d2, d1              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Subtract 1/8 */
+        "   sub.l   d2, d1              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Subtract 1/16 */
+        "   sub.l   d2, d1              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Add 1/32 */
+        "   add.l   d2, d1              \n\t"
+        "   lsr.l   #1, d2              \n\t"   /* Add 1/64 */
+        "   add.l   d2, d1              \n\t"
+
+        // "   lsl.l   #1, d1              \n\t"   /* Compensate for two loop instructions */
 
         "   move.l  d1, %0              \n\t"
         :"=mr"(result)
         :"a"(pfr)
-        :"d0", "d1"
+        :"d0", "d1", "d2"
     );
 
     /* Exit critical section */
