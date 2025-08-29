@@ -13,6 +13,7 @@ int has_dp8570_rtc;
 /* Forward decls */
 static void interrupt(void);
 static void basic_config(void);
+static void clock_restart(void);
 static UBYTE int2bcd(UWORD a);
 static UWORD bcd2int(UBYTE a);
 
@@ -85,43 +86,8 @@ dp8570_init_clock(void)
     /* Apply basic configuration */
     basic_config();
 
-    struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
-    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
-    struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
-    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
-
-    ULONG ctr;
-
-    /* Ensure we are accessing the first set of registers */
-    msr->u8 = 0;
-
-    if (pfr->OSF) {
-        KDEBUG(("dp8570_init_clock(): oscillator fail event, attempting to start clock\n"));
-
-        msr->u8 = 0x40;
-        rtmr->CSS = 1;
-
-        /* Fortunately the DP8570 has a register that counts 1/100's of a second, so we should be able to observe
-         * this register before and after some delay to see if it changes, and this may indicate that the clock is
-         * running again */
-        const UBYTE before = *(rtc + DP8570_FRAC);
-
-        for (ctr = 0xFFFFFF; ctr; ctr--) {
-            if (*(rtc + DP8570_FRAC) != before) {
-                break;
-            }
-        }
-
-        if (ctr == 0) {
-            KDEBUG(("dp8570_init_clock(): clock does not appear to be running\n"));
-            has_dp8570_rtc = 0;
-        } else {
-            KDEBUG(("dp8570_init_clock(): clock is running\n"));
-        }
-
-        /* Leave in bank 0 */
-        msr->u8 = 0;
-    }
+    /* Check for oscillator fail and restart if necessary */
+    clock_restart();
 }
 
 ULONG
@@ -262,6 +228,9 @@ dp8570_1ms_loop_calibration(void)
     /* For saving the CPU Status Register and IPL when entering/exiting critical sections */
     WORD old_sr;
 
+    /* Check for oscillator fail and restart if necessary */
+    clock_restart();
+
     /* Enter critical section - disable interrupts so they don't interfere with the measurement - max ~2ms */
     old_sr = set_sr(0x2700);
 
@@ -363,6 +332,48 @@ basic_config(void)
     msr->u8 = 0;
 }
 
+void
+clock_restart(void)
+{
+    struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
+    const struct dp8570_pfr *pfr = (void *)DP8570_BASE + DP8570_PFR;
+    struct dp8570_rtmr *rtmr = (void *)DP8570_BASE + DP8570_RTMR;
+    const volatile UBYTE *rtc = (UBYTE *)DP8570_BASE;
+
+    ULONG ctr;
+
+    /* Ensure we are accessing the first set of registers */
+    msr->u8 = 0;
+
+    if (pfr->OSF) {
+        KDEBUG(("dp8570 clock_restart(): oscillator fail event, attempting to start clock\n"));
+
+        msr->u8 = 0x40;
+        rtmr->CSS = 1;
+
+        /* Fortunately the DP8570 has a register that counts 1/100's of a second, so we should be able to observe
+         * this register before and after some delay to see if it changes, and this may indicate that the clock is
+         * running again */
+        const UBYTE before = *(rtc + DP8570_FRAC);
+
+        for (ctr = 0xFFFFFF; ctr; ctr--) {
+            if (*(rtc + DP8570_FRAC) != before) {
+                break;
+            }
+        }
+
+        if (ctr == 0) {
+            KDEBUG(("dp8570 clock_restart(): clock does not appear to be running\n"));
+            has_dp8570_rtc = 0;
+        } else {
+            KDEBUG(("dp8570 clock_restart(): clock is running\n"));
+        }
+
+        /* Leave in bank 0 */
+        msr->u8 = 0;
+    }
+}
+
 static void __attribute__((interrupt))
 interrupt(void)
 {
@@ -401,14 +412,14 @@ interrupt(void)
 
 /* int2bcd() is borrowed from clock.c because it is declared static there */
 static UBYTE
-int2bcd(UWORD a)
+int2bcd(const UWORD a)
 {
     return (a % 10) + ((a / 10) << 4);
 }
 
 /* bcd2int() is borrowed from clock.c because it is declared static there */
 static UWORD
-bcd2int(UBYTE a)
+bcd2int(const UBYTE a)
 {
     return (a & 0xf) + ((a >> 4) * 10);
 }
