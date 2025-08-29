@@ -98,7 +98,7 @@ struct ns16c2552_lcr {
             volatile UBYTE DLAB:1;
             volatile UBYTE TXBRK:1;
             volatile UBYTE PFORCE:1;
-            volatile UBYTE PEVEN:1;
+            volatile UBYTE PODD:1;
             volatile UBYTE PEN:1;
             volatile UBYTE SLEN:1;
             volatile UBYTE WLEN1:1;
@@ -149,6 +149,11 @@ struct ns16c2552_lsr {
             volatile UBYTE OERR:1;
             volatile UBYTE RXRDY:1;
         };
+        struct {
+            volatile UBYTE :4;
+            volatile UBYTE XERR:3;
+            volatile UBYTE :1;
+        };
         volatile UBYTE u8;
     };
 } __attribute__((packed));
@@ -189,7 +194,7 @@ struct nc16c2552_afr {
 void ns16c2552_detect(void);
 void ns16c2552_init(void);
 void ns16c2552_tx(void *base, EXT_IOREC *iorec, UBYTE data);
-ULONG ns16c2552_rsconf(void *port, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
+ULONG ns16c2552_rsconf(void *base, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr);
 
 #endif /* defined(CONF_WITH_NS16C2552) && CONF_WITH_NS16C2552 */
 

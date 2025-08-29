@@ -1470,14 +1470,10 @@ static LONG bconinA(void)
 
 static LONG bcostatA(void)
 {
-    // struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_LSR_REG);
-    //
-    // return (lsr->THRE) ? -1L : 0L;
-
-    IOREC *out = &iorecB.out;
+    IOREC *out = &iorecA.out;
 
     /* set the status according to buffer availability */
-    return (out->head == incr_tail(out)) ? 0L : -1L;
+    return out->head == incr_tail(out) ? 0L : -1L;
 }
 
 LONG bconoutA(WORD dev, WORD b)
@@ -1499,7 +1495,15 @@ LONG bconoutA(WORD dev, WORD b)
     *thr = (UBYTE)b;
 #  endif /* defined(MACHINE_COMET68K) */
 # else /* NS16C2552_DEBUG_PRINT */
-    FATAL(0xF00A);
+    (void)dev;
+
+    /* Wait for room to queue the byte */
+    while(!bcostatA()) {}
+
+    /* Send it */
+    ns16c2552_tx((void *)NS16C2552_BASE + NS16C2552_CHA_OFFSET, &iorecA, (UBYTE)b);
+
+    return 1L;
 # endif /* NS16C2552_DEBUG_PRINT */
 
     return 1L;
@@ -1527,7 +1531,7 @@ static LONG bcostatB(void)
     IOREC *out = &iorecB.out;
 
     /* set the status according to buffer availability */
-    return (out->head == incr_tail(out)) ? 0L : -1L;
+    return out->head == incr_tail(out) ? 0L : -1L;
 }
 
 /* bconoutX queues a byte in the tx ring buffer */
@@ -1546,16 +1550,13 @@ static LONG bconoutB(WORD dev, WORD b)
 
 static ULONG rsconfA(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
-    CHECKPOINT(0xA004);
-
-    return ns16c2552_rsconf(NULL,&iorecA,baud,ctrl,ucr,rsr,tsr,scr);
+    return ns16c2552_rsconf((void *)NS16C2552_BASE + NS16C2552_CHA_OFFSET, &iorecA,
+                            baud, ctrl, ucr, rsr, tsr, scr);
 }
 
 static ULONG rsconfB(WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
-    CHECKPOINT(0xB004);
-
-    return ns16c2552_rsconf(NULL,&iorecB,baud,ctrl,ucr,rsr,tsr,scr);
+    return ns16c2552_rsconf((void *)NS16C2552_BASE, &iorecB, baud, ctrl, ucr, rsr, tsr, scr);
 }
 #endif /* CONF_WITH_NS16C2552 */
 

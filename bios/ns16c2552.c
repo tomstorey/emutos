@@ -14,7 +14,7 @@ UBYTE ibufA[RS232_BUFSIZE], obufA[RS232_BUFSIZE];
 UBYTE ibufB[RS232_BUFSIZE], obufB[RS232_BUFSIZE];
 
 /* Based on a 7.3728MHz clock */
-static const WORD ns16c2552_timeconst[] = {
+static const UWORD ns16c2552_timeconst[] = {
     /*  19200 */  24,
     /*   9600 */  48,
     /*   4800 */  96,
@@ -38,8 +38,7 @@ int has_ns16c2552;
 
 /* Forward decls */
 static void interrupt(void);
-// static void interrupt_ch_a(ULONG source);
-static void interrupt_ch_b(ULONG source);
+static void interrupt_ch(ULONG source, void *base, EXT_IOREC *iorec);
 
 void ns16c2552_detect(void)
 {
@@ -60,33 +59,51 @@ void ns16c2552_init(void)
 {
     KDEBUG(("ns16c2552_init()\n"));
 
-    struct ns16c2552_ier *ier = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_IER_REG);
-    struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
-    struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);
-    volatile UBYTE *dll = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLL_REG);
-    volatile UBYTE *dlm = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLM_REG);
+    struct ns16c2552_ier *ier_a = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_IER_REG);
+    struct ns16c2552_ier *ier_b = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_IER_REG);
 
-    /* Basic interface configuration - 8-bit, 1 stop bit, no parity */
-    lcr->u8 = 0;
-    lcr->WLEN = 3;
+    // struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
+    // struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);
+    // volatile UBYTE *dll = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLL_REG);
+    // volatile UBYTE *dlm = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLM_REG);
+    //
+    // /* Basic interface configuration - 8-bit, 1 stop bit, no parity */
+    // lcr->u8 = 0;
+    // lcr->WLEN = 3;
+    //
+    // /* Configure the default baud rate */
+    // const UWORD baud = ns16c2552_timeconst[DEFAULT_BAUDRATE];
+    //
+    // lcr->DLAB = 1;      /* Access alternate register set */
+    // *dll = baud;
+    // *dlm = baud >> 8;
+    // lcr->DLAB = 0;      /* Main register set */
+    //
+    // ier->u8 = 0;        /* Disable all interrupt sources */
+    //
+    // fcr->u8 = 0x01;     /* Reset FIFOs, RX interrupt trigger level = 8 bytes, enable tx/rx */
+    // fcr->u8 = 0x07;
+    // fcr->u8 = 0xC7;
 
-    /* Configure the default baud rate */
-    const UWORD baud = ns16c2552_timeconst[DEFAULT_BAUDRATE];
+    /* Disable all interrupt sources */
+    ier_a->u8 = 0;
+    ier_b->u8 = 0;
 
-    lcr->DLAB = 1;      /* Access alternate register set */
-    *dll = baud;
-    *dlm = baud >> 8;
-    lcr->DLAB = 0;      /* Main register set */
-
-    ier->u8 = 0;        /* Disable all interrupt sources */
-
-    fcr->u8 = 0x07;     /* Reset FIFOs, RX interrupt trigger level = 1 byte, enable tx/rx */
-
-    /* Interrupt setup */
+    /* Interrupt vector setup - channels A and B share the same interrupt */
     volatile PFVOID *vector_addr = &VEC_LEVEL1 + (CONF_NS16C2552_AUTOVECTOR - 1);
     *vector_addr = (PFVOID)interrupt;
 
-    ier->RXDAT = 1;     /* Interrupt on RX data available */
+    /* Initialise channel B */
+    (void)ns16c2552_rsconf((void *)NS16C2552_BASE, &iorecB, DEFAULT_BAUDRATE, -1, 0, -1, -1, -1);
+
+    ier_b->RXDAT = 1;     /* Interrupt on RX data available */
+
+#if !NS16C2552_DEBUG_PRINT
+    /* Conditionally initialise channel A - if used for debug printing, it should be setup prior to starting EmuTOS */
+    (void)ns16c2552_rsconf((void *)NS16C2552_BASE, &iorecB, DEFAULT_BAUDRATE, -1, 0, -1, -1, -1);
+
+    ier_a->RXDAT = 1;     /* Interrupt on RX data available */
+#endif
 }
 
 static void __attribute__((interrupt))
@@ -94,24 +111,33 @@ interrupt(void)
 {
     /* To hold interrupt ident bits */
     struct ns16c2552_iir iir_b;
+    struct ns16c2552_iir iir_a;
 
     /* Get interrupt source */
     iir_b.u8 = *(UBYTE *)(NS16C2552_BASE + NS16C2552_IIR_REG);
+    iir_a.u8 = *(UBYTE *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_IIR_REG);
 
-    /* Check for channel B interrupts */
+    /* Handle channel B interrupts */
     if (!iir_b.INTSRC0) {
-        interrupt_ch_b(iir_b.INTSRC);
+        interrupt_ch(iir_b.INTSRC, (void *)NS16C2552_BASE, &iorecB);
+    }
+
+    /* Handle channel A interrupts */
+    if (!iir_a.INTSRC0) {
+        interrupt_ch(iir_a.INTSRC, (void *)NS16C2552_BASE + NS16C2552_CHA_OFFSET, &iorecA);
     }
 }
 
 static void
-interrupt_ch_b(ULONG source)
+interrupt_ch(ULONG source, void *base, EXT_IOREC *iorec)
 {
-    struct ns16c2552_ier *ier = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_IER_REG);
-    struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(NS16C2552_BASE + NS16C2552_LSR_REG);
+    struct ns16c2552_ier *ier = base + NS16C2552_IER_REG;
+    struct ns16c2552_mcr *mcr = base + NS16C2552_MCR_REG;
+    struct ns16c2552_lsr *lsr = base + NS16C2552_LSR_REG;
+    const struct ns16c2552_msr *msr = base + NS16C2552_MSR_REG;
 
     /* Serves a dual purposes for reading and writing */
-    volatile UBYTE *rbr = (UBYTE *)(NS16C2552_BASE + NS16C2552_RBR_REG);
+    volatile UBYTE *rbr = (UBYTE *)base + NS16C2552_RBR_REG;
 
     /* For saving a copy of the LSR when checking error conditions */
     struct ns16c2552_lsr saved_lsr;
@@ -123,7 +149,7 @@ interrupt_ch_b(ULONG source)
 
     switch (source) {
         case NS16C2552_INT_TXRDY:
-            out = &iorecB.out;
+            out = &iorec->out;
 
             /* Enter critical section */
             old_sr = set_sr(0x2700);
@@ -132,7 +158,7 @@ interrupt_ch_b(ULONG source)
             if (out->tail == out->head) {
                 ier->TXEMPTY = 0;
             } else {
-                /* Queue bytes until the TX FIFO is full, or the tx ring is empty */
+                /* Queue bytes until the TX FIFO is full, or the tx ring is empty, or CTS is negated */
                 UWORD ctr = CONF_NS16C2552_FIFOSIZE;
 
                 for (; ctr; ctr--) {
@@ -144,7 +170,7 @@ interrupt_ch_b(ULONG source)
                     }
 
                     /* Transmit byte at head */
-                    *rbr = out->buf[out->head];
+                    *rbr = out->buf[out->head] & iorec->datamask;
 
                     /* If tail==head, the ring is empty */
                     if (out->tail == out->head) {
@@ -160,6 +186,14 @@ interrupt_ch_b(ULONG source)
 
         case NS16C2552_INT_RXTIMEOUT:
         case NS16C2552_INT_RXRDY:
+            /* Enter critical section */
+            old_sr = set_sr(0x2700);
+
+            if (source == NS16C2552_INT_RXRDY || NS16C2552_DEBUG_PRINT) {
+                /* Negate RTS to give us time to clear our buffer */
+                mcr->RTSOC = 0;
+            }
+
             for (;;) {
                 /* Save the LSR to a temporary register so that we dont lose any error condition bits */
                 saved_lsr.u8 = lsr->u8;
@@ -169,30 +203,37 @@ interrupt_ch_b(ULONG source)
                 }
 
                 /* Check for error conditions, and also ignore break characters */
-                if (saved_lsr.OERR || saved_lsr.PERR || saved_lsr.FERR || saved_lsr.RXBRK) {
+                if (saved_lsr.XERR || saved_lsr.RXBRK) {
                     /* Dummy read the RBR and move to the next received character */
                     (void)*rbr;
 
                     continue;
                 }
 
-                /* Enter critical section */
-                old_sr = set_sr(0x2700);
-
+                /* If the character is received from Channel B, and if we're operating with a serial based
+                 * console, the character should be used as a keystroke. Otherwise it should be queued in
+                 * the iorec for this channel. */
+                if (base == (void *)NS16C2552_BASE) {
 #if !CONF_WITH_IKBD_NS16C2552
-                push_serial_iorec(&iorecB.in, *rbr);
+                    push_serial_iorec(&iorec->in, *rbr);
 #else
-                push_ascii_ikbdiorec(*rbr);
+                    push_ascii_ikbdiorec(*rbr);
 #endif
-
-                /* Exit critical section */
-                (void)set_sr(old_sr);
+                } else {
+                    push_serial_iorec(&iorec->in, *rbr);
+                }
             }
+
+            /* Assert RTS to allow transmission to continue */
+            mcr->RTSOC = 1;
+
+            /* Exit critical section */
+            (void)set_sr(old_sr);
 
             break;
 
         default:
-            FATAL(0xFBEE); /* Unhandled */
+           ; /* Unhandled */
     }
 }
 
@@ -200,7 +241,7 @@ void
 ns16c2552_tx(void *base, EXT_IOREC *iorec, UBYTE data)
 {
     /* Assign pointers to registers */
-    const struct ns16c2552_lsr *lsr = (struct ns16c2552_lsr *)(base + NS16C2552_LSR_REG);
+    const struct ns16c2552_lsr *lsr = base + NS16C2552_LSR_REG;
     UBYTE *thr = base + NS16C2552_THR_REG;
     IOREC *out = &iorec->out;
 
@@ -242,9 +283,152 @@ done:
 }
 
 ULONG
-ns16c2552_rsconf(void *port, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
+ns16c2552_rsconf(void *base, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, WORD rsr, WORD tsr, WORD scr)
 {
-    ULONG old = 0;
+    (void)ctrl;
+    (void)rsr;
+    (void)scr;
+
+    KDEBUG(("ns16c2552_rsconf() %p\n", base));
+
+    if (baud == -2) {
+        /* Return the current baud rate */
+        return iorec->baudrate;
+    }
+
+    struct ns16c2552_fcr *fcr = base + NS16C2552_FCR_REG;
+    struct ns16c2552_lcr *lcr = base + NS16C2552_LCR_REG;
+    struct ns16c2552_mcr *mcr = base + NS16C2552_MCR_REG;
+    const struct ns16c2552_lsr *lsr = base + NS16C2552_LSR_REG;
+    volatile UBYTE *thr = base + NS16C2552_THR_REG;
+    volatile UBYTE *dll = base + NS16C2552_DLL_REG;
+    volatile UBYTE *dlm = base + NS16C2552_DLM_REG;
+
+    BOOL changes = FALSE;
+
+    /* Set up return value */
+    ULONG old = (ULONG)iorec->ucr << 24;
+
+    if (lcr->TXBRK) {
+        old |= 0x0800;
+    }
+
+    /* Configure the baud rate */
+    if (baud >= MIN_BAUDRATE_CODE && baud <= MAX_BAUDRATE_CODE) {
+        const UWORD timeconst = ns16c2552_timeconst[baud];
+
+        lcr->DLAB = 1;
+        *dll = timeconst;
+        *dlm = timeconst >> 8;
+        lcr->DLAB = 0;
+
+        iorec->baudrate = baud;
+
+        changes = TRUE;
+    }
+
+    /* TODO: flow control configuration */
+
+    if (ucr >= 0) {
+        /* Format of the MFP UCR register:
+         *
+         *  7   6   5   4   3   2   1   0
+         * CLK CL1 CL0 ST1 ST0 PE  E/O  *
+         */
+
+        /* Word size - MFP is inverse of NS16C2552 */
+        const UBYTE ws = ((ucr >> 5) & 0x3) ^ 0x03;
+
+        /* Byte mask based on word size - default to 8 bit */
+        UBYTE mask = 0xFF;
+
+        /* New LCR value to be applied */
+        volatile struct ns16c2552_lcr new_lcr = { .u8 = 0 };
+
+        /* Set word size */
+        new_lcr.WLEN = ws;
+
+        /* Determine new byte mask */
+        switch (ws) {
+            case 0: mask = 0x1F; break; /* 5-bit */
+            case 1: mask = 0x3F; break; /* 6-bit */
+            case 2: mask = 0x7F; break; /* 7-bit */
+            default: ; /* 8-bit */
+        }
+
+        if (ucr & 0x4) {
+
+            /* Enable parity */
+            new_lcr.PEN = 1;
+
+            if (!(ucr & 0x2)) {
+                /* If bit 2 is clear, enable odd parity - inverse of MFP */
+                new_lcr.PODD = 1;
+            }
+        }
+
+        if (ucr & 0x10) {
+            /* Set 1.5 or 2 stop bits based on word size:
+             *
+             * 5 = 1.5 stop bits
+             * 6, 7, 8 = 2 stop bits
+             *
+             * Otherwise 1 stop bit.
+             *
+             * Not directly compatible with MFP. */
+            new_lcr.SLEN = 1;
+        }
+
+        lcr->u8 = new_lcr.u8;
+
+        iorec->ucr = ucr;
+        iorec->datamask = mask;
+
+        changes = TRUE;
+    }
+
+    if (tsr >= 0) {
+        /* Format of the MFP TSR register:
+         *
+         *  7   6   5   4   3   2   1   0
+         * BE  UE  AT  END  B   H   L  TE
+         *
+         * The only applicable bit is B - send break
+         */
+        if (tsr & 0x8) {
+            /* Request to send a break */
+            if (!lcr->TXBRK) {
+                /* First, wait for the FIFO to be empty */
+                while (!lsr->THRE) {}
+
+                /* Then send a 0 byte */
+                *thr = '\0';
+
+                /* Again wait for the FIFO to be empty */
+                while (!lsr->THRE) {}
+
+                /* Set the TX break enable bit */
+                lcr->TXBRK = 1;
+
+                /* Now wait for the transmitter to be idle */
+                while (!lsr->TXIDL) {}
+            }
+        } else {
+            if (lcr->TXBRK) {
+                /* Clear TX break enable bit */
+                lcr->TXBRK = 0;
+            }
+        }
+    }
+
+    if (changes != FALSE) {
+        /* Enable FIFOs and reset them, set the RX trigger level to 8 bytes */
+        fcr->u8 = 0x01;
+        fcr->u8 = 0x87;
+
+        /* Assert RTS/DTR to allow comms */
+        mcr->u8 = 0x03;
+    }
 
     return old;
 }
