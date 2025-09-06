@@ -1190,6 +1190,17 @@
 #endif
 
 /*
+ * Set CONF_WITH_COMET_PARPORT to 1 to enable COMET Parallel Printer interface support
+ */
+#ifndef CONF_WITH_COMET_PARPORT
+# define CONF_WITH_COMET_PARPORT 0
+# define COMET_PARPORT_BASE 0
+# define CONF_COMET_PARPORT_COUNT 0
+#endif
+
+
+
+/*
  * Set CONF_WITH_SDMMC to 1 to activate SD/MMC bus support
  */
 #ifndef CONF_WITH_SDMMC
@@ -2274,8 +2285,10 @@
 # if CONF_WITH_MFP_RS232
 #  error CONF_WITH_MFP_RS232 requires CONF_WITH_MFP.
 # endif
-# if CONF_WITH_PRINTER_PORT
-#  error CONF_WITH_PRINTER_PORT requires CONF_WITH_MFP.
+# if !CONF_WITH_COMET_PARPORT
+#  if CONF_WITH_PRINTER_PORT
+#   error CONF_WITH_PRINTER_PORT requires CONF_WITH_MFP.
+#  endif
 # endif
 # if CONF_WITH_FDC
 #  error CONF_WITH_FDC requires CONF_WITH_MFP.

@@ -20,6 +20,10 @@
 #include "psg.h"
 #include "ikbd.h"
 #include "tosvars.h"
+
+# if CONF_WITH_COMET_PARPORT
+#include "comet_parport.h"
+# endif
 #endif
 
 /*
@@ -61,6 +65,9 @@ WORD setprt(WORD config)
  */
 static LONG prnout(WORD c)
 {
+#ifdef CONF_WITH_COMET_PARPORT
+    return comet_parport_prnout(c);
+#else
     WORD old_sr;
     WORD a;
 
@@ -101,13 +108,18 @@ static LONG prnout(WORD c)
 
     /* restore sr */
     set_sr(old_sr);
-    return 1L;
+
+   return 1L;
+ #endif
 }
 #endif
 
 void parport_init(void)
 {
 #if CONF_WITH_PRINTER_PORT
+# ifdef CONF_WITH_COMET_PARPORT
+    comet_parport_init();
+# else
     /* set Strobe high */
     ongibit(GI_STROBE);
 
@@ -117,6 +129,7 @@ void parport_init(void)
     /* initialize other printer variables */
     printer_config = 0;     /* Setprt() default: output via parallel port */
     last_timeout = 0UL;     /* parallel port: ticks value at last timeout */
+# endif
 #endif
 }
 
@@ -129,6 +142,9 @@ LONG bconin0(void)
 LONG bcostat0(void)
 {
 #if CONF_WITH_PRINTER_PORT
+# ifdef CONF_WITH_COMET_PARPORT
+    return comet_parport_bcostat();
+# else
     MFP *mfp=MFP_BASE;
 
     if(mfp->gpip & 1) {
@@ -136,6 +152,7 @@ LONG bcostat0(void)
     } else {
         return -1;
     }
+# endif
 #else
     return 0; /* output not allowed */
 #endif
@@ -144,6 +161,9 @@ LONG bcostat0(void)
 LONG bconout0(WORD dev, WORD c)
 {
 #if CONF_WITH_PRINTER_PORT
+# ifdef CONF_WITH_COMET_PARPORT
+    return comet_parport_bconout0(dev, c);
+# else
     ULONG now = hz_200;
 
     /*
@@ -167,6 +187,8 @@ LONG bconout0(WORD dev, WORD c)
     }
 
     last_timeout = hz_200;
-#endif
+
     return 0L;
+# endif
+#endif
 }

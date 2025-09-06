@@ -22,7 +22,7 @@
 #define CONF_WITH_NS16C2552 1
 #define NS16C2552_BASE 0x00C20000
 #define CONF_NS16C2552_AUTOVECTOR 5             /* Define and set to the IRQ level for autovectored UART interrupt */
-#define CONF_NS16C2552_FIFOSIZE 16
+#define CONF_NS16C2552_FIFOSIZE 16              /* The maximum number of characters to queue in the FIFO for TX */
 #define CONF_WITH_IKBD_NS16C2552 1
 
 #define CONF_WITH_DP8570_TIMER 1
@@ -34,6 +34,11 @@
 #define COMET_CF_BASE 0x00C50000
 #define CONF_COMET_CF_COUNT 4
 #define CONF_COMET_CF_XFER_32BIT 0
+
+#define CONF_WITH_PRINTER_PORT 1
+#define CONF_WITH_COMET_PARPORT 1
+#define COMET_PARPORT_BASE 0x00C54000
+#define CONF_COMET_PARPORT_COUNT 1
 
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
