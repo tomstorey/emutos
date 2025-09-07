@@ -4,11 +4,13 @@
 
 #if defined(CONF_WITH_COMET_PARPORT) && CONF_WITH_COMET_PARPORT
 
-static UBYTE *base = NULL;
+static volatile UBYTE *base = NULL;
 
-void
+WORD
 comet_parport_init(void)
 {
+    WORD ret = -1;
+
     /* Pointer to the COMET parallel printer interface */
     base = (UBYTE *)COMET_PARPORT_BASE;
 
@@ -19,6 +21,9 @@ comet_parport_init(void)
         /* Set default pin states */
         *(base + 2) = 0x8C;
 
+        /* Printer is available */
+        ret = 0;
+
         KDEBUG((", card present\n"));
     } else {
         /* Reset pointer */
@@ -26,6 +31,8 @@ comet_parport_init(void)
 
         KDEBUG((", controller absent\n"));
     }
+
+    return ret;
 }
 
 LONG
@@ -33,7 +40,7 @@ comet_parport_bcostat(void)
 {
     KDEBUG(("comet_parport_bcostat()\n"));
 
-    const UBYTE *status = base + 3;
+    const volatile UBYTE *status = base + 3;
 
     if (base != NULL) {
         if (*status & 0x80) {

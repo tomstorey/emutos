@@ -118,7 +118,7 @@ void parport_init(void)
 {
 #if CONF_WITH_PRINTER_PORT
 # ifdef CONF_WITH_COMET_PARPORT
-    comet_parport_init();
+    printer_config = comet_parport_init();
 # else
     /* set Strobe high */
     ongibit(GI_STROBE);
