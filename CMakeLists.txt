@@ -346,6 +346,16 @@ function(configure_target target_name target_define rom_size optflags unique)
             DEPENDS ird ${CMAKE_SOURCE_DIR}/desk/icon.rsc
     )
 
+    if (${target_name} STREQUAL "comet68k")
+        # Adds a custom target that allows a "make run-comet68k.img" to be executed, which will utilise the
+        # COMETbus Dev Tool to reset the system, and then use the bootloader utility to upload the newly
+        # built image and run it.
+        add_custom_target(run-${target}
+                COMMAND python3 devtool.py reset --cycle
+                COMMAND python3 loader5.py load -a 0x300000 -j 0x300000 --console ${target}
+                DEPENDS ${target} mkrom
+        )
+    endif()
 endfunction()
 
 #                target_name        target_define              rom_size     optflags    unique
