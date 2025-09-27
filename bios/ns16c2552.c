@@ -1,5 +1,6 @@
 #include "emutos.h"
 #include "vectors.h"
+#include "biosbind.h"
 #include "serport.h"
 #include "asm.h"
 #include "ikbd.h"
@@ -36,6 +37,18 @@ static const UWORD ns16c2552_timeconst[] = {
 /* Global that indicates that an NS16C2552 UART has been detected */
 int has_ns16c2552;
 
+/* Holds the original interrupt vector for autovectored IRQ chaining */
+static ULONG next_vec = 0;
+
+/* A buffer that is built into a small IRQ chain handler - so that a jump can be made to the next handler in the chain
+ * without clobbering any registers along the way */
+static volatile UWORD irq_chain[10] = {
+    0x48e7, 0xc0c0,                 /* movem.l %d0-%d1/%a0-%a1, %sp@-       Save temporaries */
+    0x4eb9, 0x0000, 0x0000,         /* jsr     interrupt                    Run our ISR */
+    0x4cdf, 0x0303,                 /* movem.l %sp@+, %d0-%d1/%a0-%a1       Restore temporaries */
+    0x4ef9, 0x0000, 0x0000          /* jmp     ...                          Jump to next ISR in the chain */
+};
+
 /* Forward decls */
 static void interrupt(void);
 static void interrupt_ch(ULONG source, void *base, EXT_IOREC *iorec);
@@ -62,41 +75,24 @@ void ns16c2552_init(void)
     struct ns16c2552_ier *ier_a = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_CHA_OFFSET + NS16C2552_IER_REG);
     struct ns16c2552_ier *ier_b = (struct ns16c2552_ier *)(NS16C2552_BASE + NS16C2552_IER_REG);
 
-    // struct ns16c2552_lcr *lcr = (struct ns16c2552_lcr *)(NS16C2552_BASE + NS16C2552_LCR_REG);
-    // struct ns16c2552_fcr *fcr = (struct ns16c2552_fcr *)(NS16C2552_BASE + NS16C2552_FCR_REG);
-    // volatile UBYTE *dll = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLL_REG);
-    // volatile UBYTE *dlm = (UBYTE *)(NS16C2552_BASE + NS16C2552_DLM_REG);
-    //
-    // /* Basic interface configuration - 8-bit, 1 stop bit, no parity */
-    // lcr->u8 = 0;
-    // lcr->WLEN = 3;
-    //
-    // /* Configure the default baud rate */
-    // const UWORD baud = ns16c2552_timeconst[DEFAULT_BAUDRATE];
-    //
-    // lcr->DLAB = 1;      /* Access alternate register set */
-    // *dll = baud;
-    // *dlm = baud >> 8;
-    // lcr->DLAB = 0;      /* Main register set */
-    //
-    // ier->u8 = 0;        /* Disable all interrupt sources */
-    //
-    // fcr->u8 = 0x01;     /* Reset FIFOs, RX interrupt trigger level = 8 bytes, enable tx/rx */
-    // fcr->u8 = 0x07;
-    // fcr->u8 = 0xC7;
-
     /* Disable all interrupt sources */
     ier_a->u8 = 0;
     ier_b->u8 = 0;
 
     /* Interrupt vector setup - channels A and B share the same interrupt */
-    volatile PFVOID *vector_addr = &VEC_LEVEL1 + (CONF_NS16C2552_AUTOVECTOR - 1);
-    *vector_addr = (PFVOID)interrupt;
+    next_vec = Setexc((24 + CONF_NS16C2552_AUTOVECTOR), (ULONG)&irq_chain);
+
+    irq_chain[3] = (UWORD)((ULONG)&interrupt >> 16); /* Address of our ISR */
+    irq_chain[4] = (UWORD)((ULONG)&interrupt);
+
+    irq_chain[8] = (UWORD)(next_vec >> 16);     /* Address of next ISR */
+    irq_chain[9] = (UWORD)next_vec;
 
     /* Initialise channel B */
     (void)ns16c2552_rsconf((void *)NS16C2552_BASE, &iorecB, DEFAULT_BAUDRATE, -1, 0, -1, -1, -1);
 
-    ier_b->RXDAT = 1;     /* Interrupt on RX data available */
+    /* Interrupt on RX data available */
+    ier_b->RXDAT = 1;
 
 #if !NS16C2552_DEBUG_PRINT
     /* Conditionally initialise channel A - if used for debug printing, it should be setup prior to starting EmuTOS */
@@ -106,7 +102,7 @@ void ns16c2552_init(void)
 #endif
 }
 
-static void __attribute__((interrupt))
+static void
 interrupt(void)
 {
     /* To hold interrupt ident bits */
@@ -134,7 +130,6 @@ interrupt_ch(ULONG source, void *base, EXT_IOREC *iorec)
     struct ns16c2552_ier *ier = base + NS16C2552_IER_REG;
     struct ns16c2552_mcr *mcr = base + NS16C2552_MCR_REG;
     struct ns16c2552_lsr *lsr = base + NS16C2552_LSR_REG;
-    const struct ns16c2552_msr *msr = base + NS16C2552_MSR_REG;
 
     /* Serves a dual purposes for reading and writing */
     volatile UBYTE *rbr = (UBYTE *)base + NS16C2552_RBR_REG;

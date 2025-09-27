@@ -1,5 +1,6 @@
 #include "emutos.h"
 #include "vectors.h"
+#include "biosbind.h"
 #include "asm.h"
 #include "delay.h"
 #include "dp8570.h"
@@ -9,6 +10,18 @@
 /* Globals which signal that a DP8570 timer and/or RTC are present */
 int has_dp8570_timer;
 int has_dp8570_rtc;
+
+/* Holds the original interrupt vector for autovectored IRQ chaining */
+static ULONG next_vec = 0;
+
+/* A buffer that is built into a small IRQ chain handler - so that a jump can be made to the next handler in the chain
+ * without clobbering any registers along the way */
+static volatile UWORD irq_chain[10] = {
+    0x48e7, 0xc0c0,                 /* movem.l %d0-%d1/%a0-%a1, %sp@-       Save temporaries */
+    0x4eb9, 0x0000, 0x0000,         /* jsr     interrupt                    Run our ISR */
+    0x4cdf, 0x0303,                 /* movem.l %sp@+, %d0-%d1/%a0-%a1       Restore temporaries */
+    0x4ef9, 0x0000, 0x0000          /* jmp     ...                          Jump to next ISR in the chain */
+};
 
 /* Forward decls */
 static void interrupt(void);
@@ -58,21 +71,23 @@ dp8570_init_system_timer(void)
 #error "You need to define a prescaler for Timer 0 for your machine"
 #endif
 
-    /* Set the interrupt vector */
-#ifdef CONF_DP8570_AUTOVECTOR
-    volatile PFVOID *vector_addr = &VEC_LEVEL1 + (CONF_DP8570_AUTOVECTOR - 1);
+    /* Set the interrupt vector and fill in the IRQ chain handler */
+    next_vec = Setexc((24 + CONF_DP8570_AUTOVECTOR), (ULONG)&irq_chain);
 
-    *vector_addr = (PFVOID)interrupt;
-#else
-#error "TODO: vectored interrupt for DP8570"
-#endif
+    irq_chain[3] = (UWORD)((ULONG)&interrupt >> 16); /* Address of our ISR */
+    irq_chain[4] = (UWORD)((ULONG)&interrupt);
 
-    t0cr->TSS = 1;                              /* Start the timer */
+    irq_chain[8] = (UWORD)(next_vec >> 16);     /* Address of next ISR */
+    irq_chain[9] = (UWORD)next_vec;
+
+    /* Start the timer */
+    t0cr->TSS = 1;
 
     /* Access bank 1 */
     msr->u8 = 0x40;
 
-    icr0->ENT0 = 1;                             /* Enable Timer 0 interrupt */
+    /* Enable Timer 0 interrupt */
+    icr0->ENT0 = 1;
 
     /* Leave in bank 0 */
     msr->u8 = 0;
@@ -332,7 +347,7 @@ basic_config(void)
     msr->u8 = 0;
 }
 
-void
+static void
 clock_restart(void)
 {
     struct dp8570_msr *msr = (void *)DP8570_BASE + DP8570_MSR;
@@ -374,7 +389,7 @@ clock_restart(void)
     }
 }
 
-static void __attribute__((interrupt))
+static void
 interrupt(void)
 {
     /* Get interrupt conditions */
