@@ -289,8 +289,6 @@ ns16c2552_rsconf(void *base, EXT_IOREC *iorec, WORD baud, WORD ctrl, WORD ucr, W
     (void)rsr;
     (void)scr;
 
-    KDEBUG(("ns16c2552_rsconf() %p\n", base));
-
     if (baud == -2) {
         /* Return the current baud rate */
         return iorec->baudrate;
