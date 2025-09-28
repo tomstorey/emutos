@@ -79,6 +79,7 @@ set(bios_src
         bios/dp8570.c
         bios/comet_cf.c
         bios/comet_parport.c
+        bios/comet_vga.c
 )
 
 if (COLDFIRE)

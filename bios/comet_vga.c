@@ -1,0 +1,395 @@
+#define ENABLE_KDEBUG
+
+#include "emutos.h"
+
+#ifdef CONF_WITH_COMET_VGA
+
+#include "conout.h"
+#include "lineavars.h"
+#include "tosvars.h"
+#include "string.h"
+#include "comet_vga.h"
+#include "comet_vga_font1.h"
+
+/* Palette map */
+#define RGB_BLACK          0x00
+#define RGB_BLUE           0x01
+#define RGB_GREEN          0x02
+#define RGB_CYAN           0x03
+#define RGB_RED            0x04
+#define RGB_MAGENTA        0x05
+#define RGB_BROWN          0x06
+#define RGB_LIGHTGRAY      0x07
+#define RGB_GRAY           0x08
+#define RGB_LIGHTBLUE      0x09
+#define RGB_LIGHTGREEN     0x0A
+#define RGB_LIGHTCYAN      0x0B
+#define RGB_LIGHTRED       0x0C
+#define RGB_LIGHTMAGENTA   0x0D
+#define RGB_YELLOW         0x0E
+#define RGB_WHITE          0x0F
+
+static const UWORD palette_map[] = {
+    RGB_WHITE, RGB_RED, RGB_GREEN, RGB_YELLOW,
+    RGB_BLUE, RGB_MAGENTA, RGB_CYAN, RGB_LIGHTGRAY,
+    RGB_GRAY, RGB_LIGHTRED, RGB_LIGHTGREEN, RGB_BROWN,
+    RGB_LIGHTBLUE, RGB_LIGHTMAGENTA, RGB_LIGHTCYAN, RGB_BLACK
+};
+
+/* Text mode - 80x25 screen with 9x16 characters, 16fg, 8bg, blinking text */
+static const UWORD text_mode1_cfg[15] = {
+    0x8187, 0x0000, 0x0063, 0x0050, 0x0053, 0x0F06, 0x001B, 0x0002,
+    0x0019, 0x001A, 0x000F, 0x600F, 0x0000, 0x0000, 0x0050
+};
+
+/* Default 16 colour palette */
+static const UBYTE palette_16[48] = {
+    0x00, 0x00, 0x00,
+    0x00, 0x00, 0xAA,
+    0x00, 0xAA, 0x00,
+    0x00, 0xAA, 0xAA,
+    0xAA, 0x00, 0x00,
+    0xAA, 0x00, 0xAA,
+    0xAA, 0x55, 0x00,
+    0xAA, 0xAA, 0xAA,
+    0x55, 0x55, 0x55,
+    0x55, 0x55, 0xFF,
+    0x55, 0xFF, 0x55,
+    0x55, 0xFF, 0xFF,
+    0xFF, 0x55, 0x55,
+    0xFF, 0x55, 0xFF,
+    0xFF, 0xFF, 0x55,
+    0xFF, 0xFF, 0xFF
+};
+
+/* A "pointer" to the location in regen memory representing the top left corner of the display. The value is stored as
+ * an integer, from which pointers into regen memory can be created.
+ *
+ * COMET VGA regen buffers are 128Kbyte each, but 16-bit wide to store a character and its attributes, hence 65536
+ * possible character positions. */
+static UWORD regen_start = 0;
+
+/* A "pointer" to the current position of the cursor in regen memory */
+static UWORD cursor_pos = 0;
+
+/* Forward decls */
+static void init_linea_vars(void);
+static void set_text_mode(void);
+static void clear_regen(void);
+static void load_palette(void);
+static void load_font1(void);
+
+void
+comet_vga_screen_init(void)
+{
+    KDEBUG(("comet_vga_screen_init()\n"));
+
+    /* Reset vars */
+    regen_start = 0;
+    cursor_pos = 0;
+
+    set_text_mode();
+    init_linea_vars();
+}
+
+static void
+init_linea_vars(void)
+{
+    /* Screen address */
+    v_bas_ad = (UBYTE *)COMET_VGA_REGEN_ADDR;
+
+    /* Fake 640x400x2 video mode (ST high) */
+    sshiftmod = 2;
+
+    /* Line A vars */
+    /* Number of bitplanes - set to 16 to disable */
+    v_planes = 16;
+
+    /* Bytes per scan-line */
+    BYTES_LIN = 80;
+}
+
+
+
+
+
+
+static void
+set_text_mode(void)
+{
+    UWORD i;
+
+    volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE);
+
+    /* Reset CSR0 - disables the display, resets the CRTC, selects Font 1, etc etc */
+    *reg = 0;
+
+    clear_regen();
+    load_palette();
+    load_font1();
+
+    /* Configure CRTC registers */
+    for (i = 1; i < 15; i++) {
+        *(reg + i) = text_mode1_cfg[i];
+    }
+
+    /* Configure CSR0, which will enable the CRTC and display */
+    *reg = text_mode1_cfg[0];
+}
+
+static void
+clear_regen(void)
+{
+
+}
+
+static void
+load_palette(void)
+{
+    volatile UBYTE *reg = (volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_RAMDAC);
+    UWORD i;
+
+    /* Set pixel mask for 16 colour palette */
+    *(reg + 4) = 0x0F;
+
+    /* Set address register to 0 to start writing palette data */
+    *reg = 0;
+
+    /* Load palette - 16 RGB triplets */
+    for (i = 0; i < 16 * 3; i++) {
+        *(reg + 2) = palette_16[i] >> 2;
+    }
+}
+
+static void
+load_font1(void)
+{
+    volatile UBYTE *ram = (volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_FONTRAM);
+
+    UWORD i;
+
+    /* Load font into RAM */
+    for (i = 0; i < 256 * 16; i++) {
+        *ram = comet_font1_dat_table[i];
+
+        /* Font RAM is only available on the upper half of the data bus, therefore increment pointer by 2 */
+        ram += 2;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+void
+ascii_out(int ch)
+{
+    KDEBUG(("comet_vga ascii_out() ch=%04X c='%c'\n", ch, ch & 0xFF));
+
+    /* Take working copies of cursor X and Y */
+    UWORD x = v_cur_cx;
+    UWORD y = v_cur_cy;
+
+    /* First off, the character can be written to the current cursor position as that has already been calculated
+     * prior to this character write */
+    UWORD *this = (UWORD *)COMET_VGA_REGEN_ADDR;
+    this += cursor_pos;
+
+    if (v_stat_0 & M_REVID) {
+        /* Reverse fg/bg colours */
+        *this = (ch & 0xFF) << 8 | palette_map[v_col_bg & 0xF] | palette_map[v_col_fg & 0xF] << 4;
+    } else {
+        /* Normal fg/bg colours */
+        *this = (ch & 0xFF) << 8 | palette_map[v_col_bg & 0xF] << 4 | palette_map[v_col_fg & 0xF];
+    }
+
+    /* Advance the cursor X position and wrap */
+    x++;
+
+    if (x > v_cel_mx) {
+        /* Back to start of line */
+        x = 0;
+
+        /* Advance cursor Y and wrap */
+        y++;
+
+        if (y > v_cel_my) {
+            /* Keep at bottom of display area */
+           y = v_cel_my;
+
+            /* Regen start should be advanced through memory */
+            regen_start += BYTES_LIN;
+
+            /* Blank bottom row of display area */
+            blank_out(0, y, v_cel_mx, y);
+        }
+    }
+
+    /* Update CRTC regen start */
+    volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_REGEN_START);
+    *reg = regen_start;
+
+    /* Move the cursor to the new X and Y, which will update all required background variables */
+    move_cursor(x, y);
+}
+
+void
+move_cursor(int x, int y)
+{
+    // KDEBUG(("comet_vga move_cursor() x=%d y=%d\n", x, y));
+
+    /* Take a copy of the regen starting address (i.e. top left corner) */
+    UWORD work = regen_start;
+
+    /* Bounds check supplied X and Y */
+    if (x < 0) {
+        x = 0;
+    } else if (x > v_cel_mx) {
+        x = v_cel_mx;
+    }
+
+    if (y < 0) {
+        y = 0;
+    } else if (y > v_cel_my) {
+        y = v_cel_my;
+    }
+
+    /* Update position vars */
+    v_cur_cx = x;
+    v_cur_cy = y;
+
+    /* Calculate new cursor position */
+    work += y * BYTES_LIN;
+    work += x;
+
+    /* Save the new cursor position */
+    cursor_pos = work;
+
+    /* Write new cursor position to CRTC */
+    volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_CURSOR_ADDR);
+    *reg = work;
+}
+
+void
+blank_out(int topx, int topy, int botx, int boty)
+{
+    // KDEBUG(("comet_vga blank_out() topx=%d topy=%d botx=%d boty=%d\n", topx, topy, botx, boty));
+    // KDEBUG(("comet_vga blank_out() v_col_bg=%d  val=%d\n", v_col_bg, palette_map[v_col_bg & 0xF]));
+
+    /* Take a copy of the regen starting address (i.e. top left corner) */
+    UWORD work = regen_start;
+    size_t x, y;
+
+    /* Figure out the first location to be blanked */
+    work += topy * BYTES_LIN;
+    work += topx;
+
+    for (y = topy; y <= boty; y++) {
+        /* Make a pointer into regen memory */
+        UWORD *this = (UWORD *)COMET_VGA_REGEN_ADDR;
+        this += work;
+
+        for (x = topx; x <= botx; x++) {
+            *this = 0x0000 | palette_map[v_col_bg & 0xF] << 4 | palette_map[v_col_fg & 0xF];
+            this++;
+        }
+
+        /* Move to the same topx position on the next row */
+        work += BYTES_LIN;
+    }
+}
+
+void
+invert_cell(int x, int y)
+{
+    /* invert_cell() seems to be related to a software cursor, which is not necessary with COMET VGA, since it has a
+     * hardware cursor.
+     *
+     * The code below does work to invert a character cell, but it is being left commented out because a hardware
+     * cursor is implemented instead. */
+
+    // KDEBUG(("comet_vga invert_cell() x=%d y=%d\n", x, y));
+    //
+    // v_stat_0 |= M_CRIT;                 /* start of critical section. */
+    //
+    // /* Take a copy of the regen starting address (i.e. top left corner) */
+    // UWORD work = regen_start;
+    //
+    // /* Figure out the location to be inverted */
+    // work += y * BYTES_LIN;
+    // work += x;
+    //
+    // /* Make a pointer into regen memory */
+    // UWORD *this = (UWORD *)COMET_VGA_REGEN_ADDR;
+    // this += work;
+    //
+    // /* Get the char/attr pair from regen memory */
+    // UWORD data = *this;
+    //
+    // /* Swap fg/bg color indexes */
+    // data = data & 0xFF00 | (data & 0x00F0) >> 4 | (data & 0x000F) << 4;
+    //
+    // /* Put it back */
+    // *this = data;
+    //
+    // v_stat_0 &= ~M_CRIT;                /* end of critical section. */
+}
+
+void
+scroll_up(UWORD top_line)
+{
+    KDEBUG(("comet_vga scroll_up() top_line=%d\n", top_line));
+
+    /* If top_line is 0, the entire screen is being scrolled up, and we can advance the regen start register in the
+     * CRTC to accomplish this. For any other value, a memmove will be needed as only some portion of the screen is
+     * being moved. */
+    if (top_line == 0) {
+        /* Move 1 row further into regen memory */
+        regen_start += BYTES_LIN;
+
+        /* Update CRTC regen start register */
+        volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_REGEN_START);
+        *reg = regen_start;
+    }
+
+    /* Blank bottom row of display area */
+    blank_out(0, v_cel_my, v_cel_mx, v_cel_my);
+
+    /* Move the cursor to its current X and Y, which will update all required background variables */
+    move_cursor(v_cur_cx, v_cur_cy);
+
+    // UWORD work;
+    //
+    // UBYTE *src, *dst;
+    // ULONG count;
+    //
+    // work = regen_start + (top_line * BYTES_LIN);
+    //
+    // dst = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+    //
+    // work += BYTES_LIN;
+    //
+    // src = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+    //
+    // count = BYTES_LIN * 2 * (v_cel_my - top_line);
+    //
+    // (void)memmove(dst, src, count);
+    //
+    // blank_out(0, v_cel_my , v_cel_mx, v_cel_my);
+}
+
+void
+scroll_down(UWORD start_line)
+{
+    KDEBUG(("comet_vga scroll_down() top_line=%d\n", start_line));
+}
+
+
+
+
+#endif /* CONF_WITH_COMET_VGA */

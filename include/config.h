@@ -1198,7 +1198,13 @@
 # define CONF_COMET_PARPORT_COUNT 0
 #endif
 
-
+/*
+ * Set CONF_WITH_COMET_VGA to 1 to enable COMET VGA support
+ */
+#ifndef CONF_WITH_COMET_VGA
+#define CONF_WITH_COMET_VGA 0
+#define COMET_VGA_BASE 0
+#endif
 
 /*
  * Set CONF_WITH_SDMMC to 1 to activate SD/MMC bus support

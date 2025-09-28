@@ -40,6 +40,9 @@
 #define COMET_PARPORT_BASE 0x00C54000
 #define CONF_COMET_PARPORT_COUNT 1
 
+#define CONF_WITH_COMET_VGA 1
+#define COMET_VGA_BASE 0x00CD0000
+
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
 # ifndef CONF_STRAM_SIZE
@@ -77,7 +80,7 @@
 # endif
 # ifndef NS16C2552_DEBUG_PRINT
 #  define NS16C2552_DEBUG_PRINT 1
-#  define ENABLE_KDEBUG 1
+// #  define ENABLE_KDEBUG
 # endif
 
 #ifndef CONF_WITH_FDC
