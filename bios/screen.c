@@ -42,6 +42,7 @@
 #include "lisa.h"
 #include "nova.h"
 #include "xosera.h"
+#include "comet_vga.h"
 
 void detect_monitor_change(void);
 static void setphys(const UBYTE *addr);
@@ -642,6 +643,12 @@ void screen_init_mode(void)
     vblsem = 0;
 #endif
 
+#ifdef MACHINE_COMET68K
+#ifdef CONF_WITH_COMET_VGA
+    comet_vga_screen_init();
+#endif /* CONF_WITH_COMET_VGA */
+#endif /* MACHINE_COMET68K */
+
 #if CONF_SERIAL_CONSOLE
     /* Set the video mode to programs think they're running in an 80-column mode. */
     sshiftmod = ST_HIGH;
@@ -829,6 +836,13 @@ void screen_get_current_mode_info(UWORD *planes, UWORD *hz_rez, UWORD *vt_rez)
     *planes = 1;
     *hz_rez = 640;
     *vt_rez = 240;
+#elif CONF_WITH_COMET_VGA
+    /* The COMET VGA card can do both 8x and 9x wide character boxes. But fake it here that we have a 640 pixel wide
+     * display implying 8x wide characters - EmuTOS assumes 8x wide characters and this keeps all calculations sensible
+     */
+    *planes = 1;
+    *hz_rez = 640;
+    *vt_rez = 400;
 #else
     atari_get_current_mode_info(planes, hz_rez, vt_rez);
 #endif

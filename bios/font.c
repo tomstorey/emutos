@@ -73,12 +73,15 @@ void font_set_default(void)
 {
     Fonthead *font;
 
+#if CONF_WITH_COMET_VGA
+    font = &fon8x16;
+#else
 #ifdef CONF_SERIAL_CONSOLE
     font = &fon8x8;
 #else
     font = (V_REZ_VT < 400) ? &fon8x8 : &fon8x16;
 #endif
-
+#endif
     v_cel_ht = font->form_height;
     v_cel_wr = v_lin_wr * font->form_height;
     v_cel_mx = (V_REZ_HZ / font->max_cell_width) - 1;
