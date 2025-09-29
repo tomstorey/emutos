@@ -223,7 +223,7 @@ struct IDE
   #define ide_interface           ((volatile struct IDE *)0x00AE0000)
 #elif defined(MACHINE_DDRAIG68K)
   #define ide_interface           ((volatile struct IDE *)0xFFF7F300)
-#elif CONF_WITH_COMET_CF
+#elif defined(MACHINE_COMET68K)
 struct disk_status_reg {
     union {
         struct {
@@ -1770,7 +1770,7 @@ static LONG ata_identify(WORD dev)
 
     /* with twisted cable the response of IDENTIFY_DEVICE will be byte-swapped */
     if (ide_device_type(dev) == DEVTYPE_ATA) {
-#ifndef CONF_WITH_COMET_CF
+#if !CONF_WITH_COMET_CF
         ret = ide_read(IDE_CMD_IDENTIFY_DEVICE,ifnum,ifdev,0L,1,(UBYTE *)&identify,
                        ifinfo[ifnum].twisted_cable != IDE_DATA_REGISTER_IS_BYTESWAPPED);
 #else

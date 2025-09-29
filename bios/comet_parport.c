@@ -2,7 +2,7 @@
 #include "vectors.h"
 #include "comet_parport.h"
 
-#if defined(CONF_WITH_COMET_PARPORT) && CONF_WITH_COMET_PARPORT
+#if CONF_WITH_COMET_PARPORT
 
 static volatile UBYTE *base = NULL;
 
@@ -69,5 +69,5 @@ comet_parport_bconout0(WORD dev, WORD c)
     return 0L;
 }
 
-#endif /* defined(CONF_WITH_COMET_PARPORT) && CONF_WITH_COMET_PARPORT */
+#endif /* CONF_WITH_COMET_PARPORT */
 

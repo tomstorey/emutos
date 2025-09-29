@@ -11,29 +11,37 @@
 #include "comet_vga.h"
 #include "comet_vga_font1.h"
 
+/* Macros for reading and writing hardware registers */
+#define CRTC_WR_CSR0(v) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE) = (v))
+#define CRTC_RD_CSR0(v) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE))
+#define CRTC_WR_CSR1(v) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_CSR1) = (v))
+#define CRTC_RD_CSR1(v) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_CSR1))
+#define CRTC_WR(v, r) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + (r)) = (v))
+#define RAMDAC_WR(v, r) (*(volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_RAMDAC + (r)) = (v))
+
 /* Palette map */
-#define RGB_BLACK          0x00
-#define RGB_BLUE           0x01
-#define RGB_GREEN          0x02
-#define RGB_CYAN           0x03
-#define RGB_RED            0x04
-#define RGB_MAGENTA        0x05
-#define RGB_BROWN          0x06
-#define RGB_LIGHTGRAY      0x07
-#define RGB_GRAY           0x08
-#define RGB_LIGHTBLUE      0x09
-#define RGB_LIGHTGREEN     0x0A
-#define RGB_LIGHTCYAN      0x0B
-#define RGB_LIGHTRED       0x0C
-#define RGB_LIGHTMAGENTA   0x0D
-#define RGB_YELLOW         0x0E
-#define RGB_WHITE          0x0F
+#define PAL_BLACK          0x00
+#define PAL_BLUE           0x01
+#define PAL_GREEN          0x02
+#define PAL_CYAN           0x03
+#define PAL_RED            0x04
+#define PAL_MAGENTA        0x05
+#define PAL_BROWN          0x06
+#define PAL_LIGHTGRAY      0x07
+#define PAL_GRAY           0x08
+#define PAL_LTBLUE         0x09
+#define PAL_LTGREEN        0x0A
+#define PAL_LTCYAN         0x0B
+#define PAL_LTRED          0x0C
+#define PAL_LTMAGENTA      0x0D
+#define PAL_LTYELLOW       0x0E
+#define PAL_WHITE          0x0F
 
 static const UWORD palette_map[] = {
-    RGB_WHITE, RGB_RED, RGB_GREEN, RGB_YELLOW,
-    RGB_BLUE, RGB_MAGENTA, RGB_CYAN, RGB_LIGHTGRAY,
-    RGB_GRAY, RGB_LIGHTRED, RGB_LIGHTGREEN, RGB_BROWN,
-    RGB_LIGHTBLUE, RGB_LIGHTMAGENTA, RGB_LIGHTCYAN, RGB_BLACK
+    PAL_WHITE, PAL_RED, PAL_GREEN, PAL_BROWN,
+    PAL_BLUE, PAL_MAGENTA, PAL_CYAN, PAL_LIGHTGRAY,
+    PAL_GRAY, PAL_LTRED, PAL_LTGREEN, PAL_LTYELLOW,
+    PAL_LTBLUE, PAL_LTMAGENTA, PAL_LTCYAN, PAL_BLACK
 };
 
 /* Text mode - 80x25 screen with 9x16 characters, 16fg, 8bg, blinking text */
@@ -42,7 +50,7 @@ static const UWORD text_mode1_cfg[15] = {
     0x0019, 0x001A, 0x000F, 0x600F, 0x0000, 0x0000, 0x0050
 };
 
-/* Default 16 colour palette */
+/* Default 16 colour palette, as loaded into RAMDAC */
 static const UBYTE palette_16[48] = {
     0x00, 0x00, 0x00,
     0x00, 0x00, 0xAA,
@@ -122,7 +130,7 @@ set_text_mode(void)
     volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE);
 
     /* Reset CSR0 - disables the display, resets the CRTC, selects Font 1, etc etc */
-    *reg = 0;
+    CRTC_WR_CSR0(0);
 
     clear_regen();
     load_palette();
@@ -134,7 +142,7 @@ set_text_mode(void)
     }
 
     /* Configure CSR0, which will enable the CRTC and display */
-    *reg = text_mode1_cfg[0];
+    CRTC_WR_CSR0(text_mode1_cfg[0]);
 }
 
 static void
@@ -146,18 +154,17 @@ clear_regen(void)
 static void
 load_palette(void)
 {
-    volatile UBYTE *reg = (volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_RAMDAC);
     UWORD i;
 
     /* Set pixel mask for 16 colour palette */
-    *(reg + 4) = 0x0F;
+    RAMDAC_WR(0x0F, COMET_VGA_RAMDAC_MASK);
 
     /* Set address register to 0 to start writing palette data */
-    *reg = 0;
+    RAMDAC_WR(0, COMET_VGA_RAMDAC_ADDR_WR);
 
     /* Load palette - 16 RGB triplets */
     for (i = 0; i < 16 * 3; i++) {
-        *(reg + 2) = palette_16[i] >> 2;
+        RAMDAC_WR(palette_16[i] >> 2, COMET_VGA_RAMDAC_PALRAM);
     }
 }
 
@@ -231,8 +238,7 @@ ascii_out(int ch)
     }
 
     /* Update CRTC regen start */
-    volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_REGEN_START);
-    *reg = regen_start;
+    CRTC_WR(regen_start, COMET_VGA_REG_FILE_REGEN_START);
 
     /* Move the cursor to the new X and Y, which will update all required background variables */
     move_cursor(x, y);
@@ -271,8 +277,7 @@ move_cursor(int x, int y)
     cursor_pos = work;
 
     /* Write new cursor position to CRTC */
-    volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_CURSOR_ADDR);
-    *reg = work;
+    CRTC_WR(work, COMET_VGA_REG_FILE_CURSOR_ADDR);
 }
 
 void
@@ -353,8 +358,7 @@ scroll_up(UWORD top_line)
         regen_start += BYTES_LIN;
 
         /* Update CRTC regen start register */
-        volatile UWORD *reg = (volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE + COMET_VGA_REG_FILE_REGEN_START);
-        *reg = regen_start;
+        CRTC_WR(regen_start, COMET_VGA_REG_FILE_REGEN_START);
     }
 
     /* Blank bottom row of display area */

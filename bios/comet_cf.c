@@ -2,7 +2,7 @@
 #include "asm.h"
 #include "comet_cf.h"
 
-#if defined(CONF_WITH_COMET_CF) && CONF_WITH_COMET_CF
+#if CONF_WITH_COMET_CF
 
 #define ide_get_and_incr(src, dst) asm volatile("move.l (%1), (%0)+" : "=a"(dst): "a"(src), "0"(dst));
 #define ide_put_and_incr(src, dst) asm volatile("move.l (%0)+, (%1)" : "=a"(src): "a"(dst), "0"(src));
@@ -129,4 +129,4 @@ comet_cf_fast_write(void *interface, UBYTE *buffer, ULONG bufferlen, int need_by
     }
 }
 
-#endif /* defined(CONF_WITH_COMET_CF) && CONF_WITH_COMET_CF */
+#endif /* CONF_WITH_COMET_CF */

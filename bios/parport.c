@@ -65,7 +65,7 @@ WORD setprt(WORD config)
  */
 static LONG prnout(WORD c)
 {
-#ifdef CONF_WITH_COMET_PARPORT
+#if CONF_WITH_COMET_PARPORT
     return comet_parport_prnout(c);
 #else
     WORD old_sr;
@@ -117,7 +117,7 @@ static LONG prnout(WORD c)
 void parport_init(void)
 {
 #if CONF_WITH_PRINTER_PORT
-# ifdef CONF_WITH_COMET_PARPORT
+# if CONF_WITH_COMET_PARPORT
     printer_config = comet_parport_init();
 # else
     /* set Strobe high */
@@ -142,7 +142,7 @@ LONG bconin0(void)
 LONG bcostat0(void)
 {
 #if CONF_WITH_PRINTER_PORT
-# ifdef CONF_WITH_COMET_PARPORT
+# if CONF_WITH_COMET_PARPORT
     return comet_parport_bcostat();
 # else
     MFP *mfp=MFP_BASE;
@@ -161,7 +161,7 @@ LONG bcostat0(void)
 LONG bconout0(WORD dev, WORD c)
 {
 #if CONF_WITH_PRINTER_PORT
-# ifdef CONF_WITH_COMET_PARPORT
+# if CONF_WITH_COMET_PARPORT
     return comet_parport_bconout0(dev, c);
 # else
     ULONG now = hz_200;

@@ -28,6 +28,12 @@
 #define COMET_VGA_REG_FILE_CURSOR_ADDR 0x1A
 #define COMET_VGA_REG_FILE_REGEN_INC 0x1C
 
+/* Offsets for RAMDAC registers */
+#define COMET_VGA_RAMDAC_ADDR_WR 0
+#define COMET_VGA_RAMDAC_PALRAM 2
+#define COMET_VGA_RAMDAC_MASK 4
+#define COMET_VGA_RAMDAC_ADDR_RD 6
+
 void comet_vga_screen_init(void);
 
 #endif /* COMET_VGA_H */

@@ -644,7 +644,7 @@ void screen_init_mode(void)
 #endif
 
 #ifdef MACHINE_COMET68K
-#ifdef CONF_WITH_COMET_VGA
+#if CONF_WITH_COMET_VGA
     comet_vga_screen_init();
 #endif /* CONF_WITH_COMET_VGA */
 #endif /* MACHINE_COMET68K */

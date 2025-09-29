@@ -3,7 +3,7 @@
 
 #include "emutos.h"
 
-#if defined(CONF_WITH_COMET_CF) && CONF_WITH_COMET_CF
+#if CONF_WITH_COMET_CF
 
 #define COMET_CF_CSR_OFFSET 0x20
 
@@ -31,6 +31,6 @@ struct comet_cf_csr {
 void comet_cf_fast_read(void *interface, UBYTE *buffer, ULONG bufferlen, int need_byteswap);
 void comet_cf_fast_write(void *interface, UBYTE *buffer, ULONG bufferlen, int need_byteswap);
 
-#endif /* defined(CONF_WITH_COMET_CF) && CONF_WITH_COMET_CF */
+#endif /* CONF_WITH_COMET_CF */
 
 #endif //COMET_CF_H
