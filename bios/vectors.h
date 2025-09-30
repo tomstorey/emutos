@@ -38,6 +38,7 @@ void just_rte(void);
 
 #if CONF_WITH_BUS_ERROR
 long check_read_byte(long);
+long check_read_word(long);
 #endif
 
 #if CONF_WITH_DUART

@@ -23,6 +23,7 @@
 
 #if CONF_WITH_BUS_ERROR
         .globl  _check_read_byte
+        .globl  _check_read_word
 #endif
         .globl  _int_vbl
 #if CONF_WITH_ATARI_VIDEO
@@ -1461,7 +1462,7 @@ _supexec:
 _check_read_byte:
         move.l  sp,d1
         move.l  (8).w,a1
-        lea     berr.w(pc),a0
+        lea     berr_crb.w(pc),a0
         move.l  a0,(8).w
         moveq   #0,d0
         nop                                     // flush pipeline
@@ -1473,7 +1474,8 @@ _check_read_byte:
 
         moveq   #0x01,d0        // passed
 
-berr:   move.l  a1,(8).w
+berr_crb:
+        move.l  a1,(8).w
         move.l  d1,sp
         nop
 
@@ -1493,6 +1495,53 @@ berr:   move.l  a1,(8).w
 #if DBG_CHECK_READ_BYTE
 msgcrb:
         .asciz  "check_read_byte(0x%08lx) returns %d\n"
+        .even
+#endif
+
+/* ==== check_read_word =====================================================
+ *
+ * check_read_word - Verify access to the memory pointed to by the ptr by
+ * accessing a word
+ *
+ * C call: int check_read_word(long);
+ * returns 0 if reading the address caused a bus error
+ */
+_check_read_word:
+        move.l  sp,d1
+        move.l  (8).w,a1
+        lea     berr_crw.w(pc),a0
+        move.l  a0,(8).w
+        moveq   #0,d0
+        nop                                     // flush pipeline
+
+        move.l  4(sp),a0
+        jbsr    buggy_jit_save_registers_before_bus_error
+        tst.w   (a0)            // this may cause a Bus Error
+        nop                                     // flush pipeline
+
+        moveq   #0x01,d0        // passed
+
+berr_crw:
+        move.l  a1,(8).w
+        move.l  d1,sp
+        nop
+
+#if DBG_CHECK_READ_BYTE
+        move.l  d0,-(sp)        // backup return value
+
+        move.w  d0,-(sp)
+        move.l  a0,-(sp)
+        pea     msgcrw(pc)
+        jsr     _kprintf        // print debug message
+        lea     10(sp),sp
+
+        move.l  (sp)+,d0        // restore return value
+#endif
+        rts
+
+#if DBG_CHECK_READ_BYTE
+msgcrw:
+        .asciz  "check_read_word(0x%08lx) returns %d\n"
         .even
 #endif
 
