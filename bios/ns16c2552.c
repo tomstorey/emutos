@@ -65,7 +65,7 @@ void ns16c2552_detect(void)
         }
     }
 
-    KDEBUG(("has_ns16c2552 = %d\n", has_ns16c2552));
+    KDEBUG(("ns16c2552_detect(): has_ns16c2552 = %d\n", has_ns16c2552));
 }
 
 void ns16c2552_init(void)
@@ -79,8 +79,12 @@ void ns16c2552_init(void)
     ier_a->u8 = 0;
     ier_b->u8 = 0;
 
-    /* Interrupt vector setup - channels A and B share the same interrupt */
-    next_vec = Setexc((24 + CONF_NS16C2552_AUTOVECTOR), (ULONG)&irq_chain);
+    /* Interrupt vector setup - channels A and B share the same interrupt - chain the interrupt handler in.
+     *
+     * Cant use Setexc here because TRAP 13 has not been initialised at the stage of boot where this code executes */
+    volatile void *vector_addr = &VEC_LEVEL1 + (CONF_NS16C2552_AUTOVECTOR - 1);
+    next_vec = *(ULONG *)vector_addr;
+    *(ULONG *)vector_addr = (ULONG)&irq_chain;
 
     irq_chain[3] = (UWORD)((ULONG)&interrupt >> 16); /* Address of our ISR */
     irq_chain[4] = (UWORD)((ULONG)&interrupt);

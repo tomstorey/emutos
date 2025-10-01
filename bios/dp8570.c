@@ -72,7 +72,9 @@ dp8570_init_system_timer(void)
 #endif
 
     /* Set the interrupt vector and fill in the IRQ chain handler */
-    next_vec = Setexc((24 + CONF_DP8570_AUTOVECTOR), (ULONG)&irq_chain);
+    volatile void *vector_addr = &VEC_LEVEL1 + (CONF_DP8570_AUTOVECTOR - 1);
+    next_vec = *(ULONG *)vector_addr;
+    *(ULONG *)vector_addr = (ULONG)&irq_chain;
 
     irq_chain[3] = (UWORD)((ULONG)&interrupt >> 16); /* Address of our ISR */
     irq_chain[4] = (UWORD)((ULONG)&interrupt);
