@@ -2,8 +2,9 @@
 
 #include "emutos.h"
 
-#ifdef CONF_WITH_COMET_VGA
+#if CONF_WITH_COMET_VGA
 
+#include "vectors.h"
 #include "conout.h"
 #include "lineavars.h"
 #include "tosvars.h"
@@ -27,20 +28,20 @@
 #define PAL_RED            0x04
 #define PAL_MAGENTA        0x05
 #define PAL_BROWN          0x06
-#define PAL_LIGHTGRAY      0x07
-#define PAL_GRAY           0x08
+#define PAL_WHITE          0x07
+#define PAL_GREY           0x08
 #define PAL_LTBLUE         0x09
 #define PAL_LTGREEN        0x0A
 #define PAL_LTCYAN         0x0B
 #define PAL_LTRED          0x0C
 #define PAL_LTMAGENTA      0x0D
 #define PAL_LTYELLOW       0x0E
-#define PAL_WHITE          0x0F
+#define PAL_LTWHITE        0x0F
 
 static const UWORD palette_map[] = {
-    PAL_WHITE, PAL_RED, PAL_GREEN, PAL_BROWN,
-    PAL_BLUE, PAL_MAGENTA, PAL_CYAN, PAL_LIGHTGRAY,
-    PAL_GRAY, PAL_LTRED, PAL_LTGREEN, PAL_LTYELLOW,
+    PAL_LTWHITE, PAL_RED, PAL_GREEN, PAL_BROWN,
+    PAL_BLUE, PAL_MAGENTA, PAL_CYAN, PAL_WHITE,
+    PAL_GREY, PAL_LTRED, PAL_LTGREEN, PAL_LTYELLOW,
     PAL_LTBLUE, PAL_LTMAGENTA, PAL_LTCYAN, PAL_BLACK
 };
 
@@ -52,22 +53,22 @@ static const UWORD text_mode1_cfg[15] = {
 
 /* Default 16 colour palette, as loaded into RAMDAC */
 static const UBYTE palette_16[48] = {
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0xAA,
-    0x00, 0xAA, 0x00,
-    0x00, 0xAA, 0xAA,
-    0xAA, 0x00, 0x00,
-    0xAA, 0x00, 0xAA,
-    0xAA, 0x55, 0x00,
-    0xAA, 0xAA, 0xAA,
-    0x55, 0x55, 0x55,
-    0x55, 0x55, 0xFF,
-    0x55, 0xFF, 0x55,
-    0x55, 0xFF, 0xFF,
-    0xFF, 0x55, 0x55,
-    0xFF, 0x55, 0xFF,
-    0xFF, 0xFF, 0x55,
-    0xFF, 0xFF, 0xFF
+    0x00, 0x00, 0x00,   /* Black */
+    0x00, 0x00, 0xAA,   /* Blue */
+    0x00, 0xAA, 0x00,   /* Green */
+    0x00, 0xAA, 0xAA,   /* Cyan */
+    0xAA, 0x00, 0x00,   /* Red */
+    0xAA, 0x00, 0xAA,   /* Magenta */
+    0xAA, 0x55, 0x00,   /* Brown */
+    0xAA, 0xAA, 0xAA,   /* White */
+    0x55, 0x55, 0x55,   /* Grey */
+    0x55, 0x55, 0xFF,   /* Lt Blue */
+    0x55, 0xFF, 0x55,   /* Lt Green */
+    0x55, 0xFF, 0xFF,   /* Lt Cyan */
+    0xFF, 0x55, 0x55,   /* Lt Red */
+    0xFF, 0x55, 0xFF,   /* Lt Magenta */
+    0xFF, 0xFF, 0x55,   /* Lt Yellow */
+    0xFF, 0xFF, 0xFF    /* Lt White */
 };
 
 /* A "pointer" to the location in regen memory representing the top left corner of the display. The value is stored as
@@ -80,10 +81,12 @@ static UWORD regen_start = 0;
 /* A "pointer" to the current position of the cursor in regen memory */
 static UWORD cursor_pos = 0;
 
+/* Indicates whether a card has been detected */
+static BOOL have_card = FALSE;
+
 /* Forward decls */
 static void init_linea_vars(void);
 static void set_text_mode(void);
-static void clear_regen(void);
 static void load_palette(void);
 static void load_font1(void);
 
@@ -91,6 +94,18 @@ void
 comet_vga_screen_init(void)
 {
     KDEBUG(("comet_vga_screen_init()\n"));
+
+    /* Reset have flag */
+    have_card = FALSE;
+
+    if (!check_read_word(COMET_VGA_BASE + COMET_VGA_REG_FILE)) {
+        KDEBUG(("comet_vga_screen_init(): COMET VGA card not detected at %p\n", (void *)(COMET_VGA_BASE + COMET_VGA_REG_FILE)));
+
+        return;
+    }
+
+    /* We have a card */
+    have_card = TRUE;
 
     /* Reset vars */
     regen_start = 0;
@@ -117,11 +132,6 @@ init_linea_vars(void)
     BYTES_LIN = 80;
 }
 
-
-
-
-
-
 static void
 set_text_mode(void)
 {
@@ -132,7 +142,6 @@ set_text_mode(void)
     /* Reset CSR0 - disables the display, resets the CRTC, selects Font 1, etc etc */
     CRTC_WR_CSR0(0);
 
-    clear_regen();
     load_palette();
     load_font1();
 
@@ -143,12 +152,6 @@ set_text_mode(void)
 
     /* Configure CSR0, which will enable the CRTC and display */
     CRTC_WR_CSR0(text_mode1_cfg[0]);
-}
-
-static void
-clear_regen(void)
-{
-
 }
 
 static void
@@ -184,19 +187,13 @@ load_font1(void)
     }
 }
 
-
-
-
-
-
-
-
-
-
 void
 ascii_out(int ch)
 {
-    KDEBUG(("comet_vga ascii_out() ch=%04X c='%c'\n", ch, ch & 0xFF));
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
 
     /* Take working copies of cursor X and Y */
     UWORD x = v_cur_cx;
@@ -247,7 +244,10 @@ ascii_out(int ch)
 void
 move_cursor(int x, int y)
 {
-    // KDEBUG(("comet_vga move_cursor() x=%d y=%d\n", x, y));
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
 
     /* Take a copy of the regen starting address (i.e. top left corner) */
     UWORD work = regen_start;
@@ -283,8 +283,10 @@ move_cursor(int x, int y)
 void
 blank_out(int topx, int topy, int botx, int boty)
 {
-    // KDEBUG(("comet_vga blank_out() topx=%d topy=%d botx=%d boty=%d\n", topx, topy, botx, boty));
-    // KDEBUG(("comet_vga blank_out() v_col_bg=%d  val=%d\n", v_col_bg, palette_map[v_col_bg & 0xF]));
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
 
     /* Take a copy of the regen starting address (i.e. top left corner) */
     UWORD work = regen_start;
@@ -312,6 +314,11 @@ blank_out(int topx, int topy, int botx, int boty)
 void
 invert_cell(int x, int y)
 {
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
+
     /* invert_cell() seems to be related to a software cursor, which is not necessary with COMET VGA, since it has a
      * hardware cursor.
      *
@@ -348,52 +355,96 @@ invert_cell(int x, int y)
 void
 scroll_up(UWORD top_line)
 {
-    KDEBUG(("comet_vga scroll_up() top_line=%d\n", top_line));
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
 
-    /* If top_line is 0, the entire screen is being scrolled up, and we can advance the regen start register in the
-     * CRTC to accomplish this. For any other value, a memmove will be needed as only some portion of the screen is
-     * being moved. */
+    /* If top_line is 0, the whole screen can be scrolled by adjusting the regen start address. For any other value, a
+     * memmove() will be needed as only some portion of the screen is being scrolled. */
     if (top_line == 0) {
         /* Move 1 row further into regen memory */
         regen_start += BYTES_LIN;
 
         /* Update CRTC regen start register */
         CRTC_WR(regen_start, COMET_VGA_REG_FILE_REGEN_START);
+
+        /* Move the cursor to its current X and Y, which will update all required background variables */
+        move_cursor(v_cur_cx, v_cur_cy);
+    } else {
+        UBYTE *src, *dst;
+        ULONG count;
+        UWORD work;
+
+        /* Figure out the destination address */
+        work = regen_start + (top_line * BYTES_LIN);
+        dst = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+
+        /* The source address is one row below */
+        work += BYTES_LIN;
+        src = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+
+        /* The number of bytes to copy is doubled due to regen memory being comprised of pairs of character and
+         * attribute */
+        count = BYTES_LIN * 2 * (v_cel_my - top_line);
+
+        (void)memmove(dst, src, count);
+
+        /* If the cursor was in the scrolled portion of the screen, adjust its position */
+        if (v_cur_cy >= top_line) {
+            /* Move the cursor one row up */
+            move_cursor(v_cur_cx, v_cur_cy - 1);
+        }
     }
 
     /* Blank bottom row of display area */
     blank_out(0, v_cel_my, v_cel_mx, v_cel_my);
-
-    /* Move the cursor to its current X and Y, which will update all required background variables */
-    move_cursor(v_cur_cx, v_cur_cy);
-
-    // UWORD work;
-    //
-    // UBYTE *src, *dst;
-    // ULONG count;
-    //
-    // work = regen_start + (top_line * BYTES_LIN);
-    //
-    // dst = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
-    //
-    // work += BYTES_LIN;
-    //
-    // src = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
-    //
-    // count = BYTES_LIN * 2 * (v_cel_my - top_line);
-    //
-    // (void)memmove(dst, src, count);
-    //
-    // blank_out(0, v_cel_my , v_cel_mx, v_cel_my);
 }
 
 void
 scroll_down(UWORD start_line)
 {
-    KDEBUG(("comet_vga scroll_down() top_line=%d\n", start_line));
+    if (!have_card) {
+        /* Dont do any video operations if we dont have a card */
+        return;
+    }
+
+    /* If start_line is 0, the whole screen can be scrolled by adjusting the regen start address. For any other value,
+     * a memmove() will be needed as only some portion of the screen is being scrolled. */
+    if (start_line == 0) {
+        /* Move 1 row back in regen memory */
+        regen_start -= BYTES_LIN;
+
+        /* Update CRTC regen start register */
+        CRTC_WR(regen_start, COMET_VGA_REG_FILE_REGEN_START);
+
+        /* The cursor needs to remain in its current position, so increment its Y position */
+        move_cursor(v_cur_cx, v_cur_cy + 1);
+    } else {
+        UBYTE *src, *dst;
+        ULONG count;
+        UWORD work;
+
+        /* Figure out the source address */
+        work = regen_start + (start_line * BYTES_LIN);
+        src = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+
+        /* The destination address is one row below */
+        work += BYTES_LIN;
+        dst = (UBYTE *)COMET_VGA_REGEN_ADDR + (work * 2);
+
+        /* The number of bytes to copy is doubled due to regen memory being comprised of pairs of character and
+         * attribute */
+        count = BYTES_LIN * 2 * (v_cel_my - start_line);
+
+        (void)memmove(dst, src, count);
+
+        /* If the cursor was in the scrolled portion of the screen, adjust its position */
+        if (v_cur_cy >= start_line) {
+            /* Move the cursor one row down */
+            move_cursor(v_cur_cx, v_cur_cy + 1);
+        }
+    }
 }
-
-
-
 
 #endif /* CONF_WITH_COMET_VGA */
