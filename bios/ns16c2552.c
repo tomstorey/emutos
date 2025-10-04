@@ -82,15 +82,15 @@ void ns16c2552_init(void)
     /* Interrupt vector setup - channels A and B share the same interrupt - chain the interrupt handler in.
      *
      * Cant use Setexc here because TRAP 13 has not been initialised at the stage of boot where this code executes */
-    volatile void *vector_addr = &VEC_LEVEL1 + (CONF_NS16C2552_AUTOVECTOR - 1);
+    volatile void *vector_addr = &VEC_LEVEL1 + (CONF_NS16C2552_IRQ - 1);
     next_vec = *(ULONG *)vector_addr;
     *(ULONG *)vector_addr = (ULONG)&irq_chain;
 
-    irq_chain[3] = (UWORD)((ULONG)&interrupt >> 16); /* Address of our ISR */
-    irq_chain[4] = (UWORD)((ULONG)&interrupt);
+    irq_chain[3] = HIWORD(&interrupt);              /* Address of our ISR */
+    irq_chain[4] = LOWORD(&interrupt);
 
-    irq_chain[8] = (UWORD)(next_vec >> 16);     /* Address of next ISR */
-    irq_chain[9] = (UWORD)next_vec;
+    irq_chain[8] = HIWORD(next_vec);                /* Address of next ISR */
+    irq_chain[9] = LOWORD(next_vec);
 
     /* Initialise channel B */
     (void)ns16c2552_rsconf((void *)NS16C2552_BASE, &iorecB, DEFAULT_BAUDRATE, -1, 0, -1, -1, -1);
