@@ -21,13 +21,13 @@
 
 #define CONF_WITH_NS16C2552 1
 #define NS16C2552_BASE 0x00C20000
-#define CONF_NS16C2552_AUTOVECTOR 5             /* Define and set to the IRQ level for autovectored UART interrupt */
+#define CONF_NS16C2552_IRQ 5                    /* Define and set to the IRQ level for autovectored UART interrupt */
 #define CONF_NS16C2552_FIFOSIZE 16              /* The maximum number of characters to queue in the FIFO for TX */
 #define CONF_WITH_IKBD_NS16C2552 1
 
 #define CONF_WITH_DP8570_TIMER 1
 #define DP8570_BASE 0x00C30000
-#define CONF_DP8570_AUTOVECTOR 1                /* Define and set to the IRQ level for autovectored timer interrupt */
+#define CONF_DP8570_IRQ 1                       /* Define and set to the IRQ level for autovectored timer interrupt */
 #define CONF_WITH_DP8570_RTC 1
 
 #define CONF_WITH_COMET_CF 1
@@ -42,6 +42,9 @@
 
 #define CONF_WITH_COMET_VGA 1
 #define COMET_VGA_BASE 0x00CD0000
+#define COMET_VGA_VECTOR_BASE 0x70
+#define CONF_COMET_VGA_LO_IRQ 3                 /* V blank and I2C */
+#define CONF_COMET_VGA_HI_IRQ 5                 /* Keyboard and mouse */
 
 /* COMET68k has 4MB on-board, but Im artificially limiting it to 3MB here to give me room to load the EmuTOS binary
  * into the top 1MB using my serial bootloader utility */
@@ -137,6 +140,7 @@
 
 #define CHECKPOINT(v) { *(volatile UWORD *)(0xC00000) = (v); }
 #define FATAL(v) { *(volatile UWORD *)(0xC00000) = (v); HCF(); }
+#define CLEAR_DEBUG() { (void)*(volatile UWORD *)(0xC00000); }
 
 /* Halt and catch fire! Halts the processor in a state where only an NMI would wake it, but
  * loops endlessly in this state. */

@@ -42,6 +42,7 @@
 #include "lisa.h"
 #include "ace_uart.h"
 #include "duart68681.h"
+#include "comet_vga.h"
 
 
 /* forward declarations */
@@ -1151,6 +1152,10 @@ void kbd_init(void)
     /* Initialize the ACE interface to keyboard. */
     init_uart_ace(&ikbd_ace);
 #endif /* CONF_WITH_IKBD_ACE */
+
+#if CONF_WITH_COMET_VGA
+    comet_vga_vt82c42_init();
+#endif
 
     /* initialize the IKBD */
     ikbd_reset();

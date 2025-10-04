@@ -4,11 +4,16 @@
 /* Base address of the regen buffer on a COMET VGA card */
 #define COMET_VGA_REGEN_ADDR 0x00D00000
 
+/* Interrupt vector offsets */
+#define COMET_VGA_KB_VECTOR 0
+#define COMET_VGA_V_BLANK_VECTOR 1
+#define COMET_VGA_I2C_VECTOR 2
+
 /* Offsets to various register sets from the base address of a COMET VGA card */
 #define COMET_VGA_REG_FILE 0
 #define COMET_VGA_RAMDAC 0x800
 #define COMET_VGA_I2C 0x1000
-#define COMET_VGA_PS2 0x1800
+#define COMET_VGA_I8042 0x1800
 #define COMET_VGA_FONTRAM 0x2000
 
 /* Offsets for CRTC register file */
@@ -34,6 +39,11 @@
 #define COMET_VGA_RAMDAC_MASK 4
 #define COMET_VGA_RAMDAC_ADDR_RD 6
 
+/* Offsets for i8042 registers */
+#define COMET_VGA_I8042_DATA 0
+#define COMET_VGA_I8042_CMD 4
+
 void comet_vga_screen_init(void);
+void comet_vga_vt82c42_init(void);
 
 #endif /* COMET_VGA_H */
