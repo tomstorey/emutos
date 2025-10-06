@@ -910,7 +910,8 @@ interrupt_vt82c42(void)
 enum key_state {
     KEY_STATE_DEFAULT = 0,
     KEY_STATE_UNTIL_BREAK,
-    KEY_STATE_ESCAPE
+    KEY_STATE_ESCAPE,
+    KEY_STATE_PAUSE_BREAK
 };
 
 static void
@@ -978,8 +979,39 @@ vt82c42_handle_key(const UBYTE code)
 
         case KEY_STATE_UNTIL_BREAK:
             if (code == 0xF0) {
+                /* Next code will be a break code */
                 is_break_code = TRUE;
                 state = KEY_STATE_DEFAULT;
+            }
+
+            break;
+
+        case KEY_STATE_PAUSE_BREAK:
+            if (code == 0xF0) {
+                /* Next code will be a break code */
+                is_break_code = TRUE;
+
+                return;
+            }
+
+            if (!is_escape2) {
+                if (code == 0x14) {
+                    /* Abuse the is_escape2 flag to keep track of where we are processing this key */
+                    is_escape2 = TRUE;
+                } else if (is_break_code && code == 0x77) {
+                    /* Sequence complete */
+                    is_break_code = FALSE;
+                    state = KEY_STATE_DEFAULT;
+                }
+            } else {
+                if (code == 0x77) {
+                    /* Pause/Break key pressed */
+                    /* TODO: something? */
+                    KDEBUG(("vt82c42_handle_key(): Pause/Break\n"));
+                } else if (is_break_code && code == 0x14) {
+                    is_break_code = FALSE;
+                    is_escape2 = FALSE;
+                }
             }
 
             break;
@@ -995,6 +1027,13 @@ vt82c42_handle_key(const UBYTE code)
             if (code == 0xE0) {
                 /* Extended key code */
                 state = KEY_STATE_ESCAPE;
+
+                return;
+            }
+
+            if (code == 0xE1) {
+                /* Probably Pause/Break */
+                state = KEY_STATE_PAUSE_BREAK;
 
                 return;
             }
