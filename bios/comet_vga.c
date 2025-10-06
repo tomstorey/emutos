@@ -12,7 +12,7 @@
 #include "ikbd.h"
 #include "comet_vga.h"
 #include "comet_vga_font1.h"
-#include "comet_vga_keymap_us.h"
+#include "comet_vga_keymap_us_set2.h"
 
 /* Macros for reading and writing hardware registers */
 #define CRTC_WR_CSR0(v) (*(volatile UWORD *)(COMET_VGA_BASE + COMET_VGA_REG_FILE) = (v))
@@ -566,7 +566,9 @@ scroll_down(UWORD start_line)
 
 #define I8042_CMD_KB_OBF_INT 0x01
 #define I8042_CMD_MS_OBF_INT 0x02
-#define I8042_CMD_PC_COMPAT 0x40
+#define I8042_CMD_KB_DISABLE 0x10
+#define I8042_CMD_MS_DISABLE 0x20
+#define I8042_CMD_PC_COMPAT 0   /* 0x40 to enable scan code translation */
 
 #define KB_LED_SCROLL 0x01
 #define KB_LED_NUM 0x02
@@ -577,10 +579,11 @@ enum VT82C42_port {
     VT82C42_MS = 1
 };
 
-/* Holds the state of the LEDs */
+/* Holds the state of the LEDs, which can also be used to determine whether Num/Caps/Scroll locks have been engaged or
+ * not */
 static UBYTE kb_leds = 0;
 
-
+/* Forward decls */
 static void vt82c42_write_wait(UBYTE data, UBYTE reg);
 static UBYTE vt82c42_cmd_data_polled(UBYTE cmd);
 static UBYTE vt82c42_data_data_polled(UBYTE data);
@@ -588,12 +591,10 @@ static UBYTE vt82c42_data_polled(void);
 static UBYTE vt82c42_send_device_cmd(enum VT82C42_port port, UBYTE cmd);
 static UBYTE vt82c42_get_cmd_byte(void);
 static void vt82c42_set_cmd_byte(UBYTE cmd);
-
 static BOOL device_keyboard_reset(void);
 static void device_keyboard_led_animate(void);
-
 static void interrupt_vt82c42(void);
-static void vt82c42_handle_key(UBYTE data);
+static void vt82c42_handle_key(UBYTE code);
 
 static void
 vt82c42_write_wait(const UBYTE data, const UBYTE reg)
@@ -729,7 +730,7 @@ comet_vga_vt82c42_init(void)
     UBYTE status;
 
     /* Disable keyboard and mouse interfaces, and inhibit interrupts */
-    vt82c42_set_cmd_byte(0x70);
+    vt82c42_set_cmd_byte(I8042_CMD_PC_COMPAT | I8042_CMD_MS_DISABLE | I8042_CMD_KB_DISABLE);
 
     /* Flush the output buffer */
     for (;;) {
@@ -906,150 +907,207 @@ interrupt_vt82c42(void)
 
 
 
-
 enum key_state {
     KEY_STATE_DEFAULT = 0,
-    KEY_STATE_ESCAPE0,
-    KEY_STATE_ESCAPE1,
-    KEY_STATE_ESCAPE_DOUBLE,
-    KEY_STATE_PAUSEBRK
+    KEY_STATE_UNTIL_BREAK,
+    KEY_STATE_ESCAPE
 };
 
-
 static void
-vt82c42_handle_key(const UBYTE data)
+vt82c42_handle_key(const UBYTE code)
 {
-    // KDEBUG(("vt82c42_handle_key(): data=%02X\n", data));
+    KDEBUG(("vt82c42_handle_key(): code=%02X\n", code));
 
     static enum key_state state = KEY_STATE_DEFAULT;
-
-    const UBYTE code = data & 0x7F;
-    const UBYTE is_break = data & 0x80;
-    UBYTE chr = 0;
-
+    const UBYTE make_code = code & 0x7F;
+    static BOOL is_break_code = FALSE;
+    UBYTE xlat_code = 0;
+    BOOL queue_code = FALSE;
     BOOL update_leds = FALSE;
-    BOOL queue_chr = FALSE;
+    static BOOL is_escape2 = FALSE;
+
+    /* Ignore code 0 */
+    if (code == 0) {
+        return;
+    }
 
     switch (state) {
-        case KEY_STATE_ESCAPE0:
-            if (data == 0x2A) {
-                /* Key is double escaped */
-                state = KEY_STATE_ESCAPE_DOUBLE;
-            } else {
-                chr = ps2_extended_scancode_map[code];
+        case KEY_STATE_ESCAPE:
+            if (code == 0xF0) {
+                /* Next code will be a break code */
+                is_break_code = TRUE;
 
-                if ((SBYTE)chr != -1) {
-                    if (chr == 0) {
-                        /* No translation was needed, take raw code */
-                        chr = data;
-                    }
+                return;
+            }
 
-                    queue_chr = TRUE;
-                }
+            if (code > COMET_VGA_MAX_KEY_CODE) {
+                /* Ignore/consume codes that are out of range */
+                is_break_code = FALSE;
+                /* Should we return to the default state here? */
 
+                return;
+            }
+
+            if (code == 0x12) {
+                /* Enable/disable double escaped code set */
+                is_escape2 = is_break_code ? FALSE : TRUE;
+                is_break_code = FALSE;
+                state = KEY_STATE_DEFAULT;
+
+                return;
+            }
+
+            /* Look up translated code ... */
+            xlat_code = is_escape2 ? ps2_extended2_scancode_map[make_code] : ps2_extended_scancode_map[make_code];
+
+            if (xlat_code == 0) {
+                /* Ignore/consume this code */
+                is_break_code = FALSE;
+                state = KEY_STATE_DEFAULT;
+
+                return;
+            }
+
+            if ((SBYTE)xlat_code != -1) {
+                /* This code will be queued */
+                queue_code = TRUE;
                 state = KEY_STATE_DEFAULT;
             }
 
             break;
 
-        case KEY_STATE_ESCAPE_DOUBLE:
-            if (data == 0xE0) {
-                /* Consume escape code during escape mode */
-            } else if (data == 0xAA) {
-                /* Sequence complete  */
+        case KEY_STATE_UNTIL_BREAK:
+            if (code == 0xF0) {
+                is_break_code = TRUE;
                 state = KEY_STATE_DEFAULT;
-            } else {
-                chr = ps2_extended2_scancode_map[code];
-
-                if ((SBYTE)chr != -1) {
-                    if (chr == 0) {
-                        /* No translation was needed, take raw code */
-                        chr = data;
-                    }
-
-                    queue_chr = TRUE;
-                }
             }
 
             break;
 
-        case KEY_STATE_ESCAPE1:
-            /* Wait for 0x1D code (break masked out) */
-            if (code == 0x1D) {
-                state = KEY_STATE_PAUSEBRK;
-            }
-
-            break;
-
-        case KEY_STATE_PAUSEBRK:
-            if (code == 0x45) {
-                /* Break key */
-
-                if (is_break > 0) {
-                    /* Break event - sequence complete */
-                    state = KEY_STATE_DEFAULT;
-                } else {
-                    /* Make event */
-                    /* TODO: what to do with break key? Just log it for now. */
-                    KDEBUG(("vt82c42_handle_key(): Pause/Break\n"));
-                }
-            } else {
-                /* Other codes consumed */
-            }
-
-            break;
-
-        case KEY_STATE_DEFAULT:
         default:
-            if (data == 0xE0) {
-                state = KEY_STATE_ESCAPE0;
-            } else if (data == 0xE1) {
-                state = KEY_STATE_ESCAPE1;
+            if (code == 0xF0) {
+                /* Next code will be a break code */
+                is_break_code = TRUE;
+
+                return;
+            }
+
+            if (code == 0xE0) {
+                /* Extended key code */
+                state = KEY_STATE_ESCAPE;
+
+                return;
+            }
+
+            if (code > COMET_VGA_MAX_KEY_CODE) {
+                /* Ignore/consume codes that are out of range */
+                is_break_code = FALSE;
+
+                return;
+            }
+
+            /* Look up translated code ... */
+            xlat_code = kb_leds & KB_LED_NUM ? ps2_scancode_map_numlock[make_code] : ps2_scancode_map[make_code];
+
+            if (xlat_code == 0) {
+                /* Ignore/consume this code */
+                is_break_code = FALSE;
+
+                return;
+            }
+
+            if ((SBYTE)xlat_code != -1) {
+                /* This code will be queued */
+                queue_code = TRUE;
             } else {
-                /* Any other key */
-                if (kb_leds & KB_LED_NUM) {
-                    chr = ps2_scancode_map_numlock[code];
-                } else {
-                    chr = ps2_scancode_map[code];
-                }
-
-                if ((SBYTE)chr != -1) {
-                    if (chr == 0) {
-                        /* No translation was needed, take raw code */
-                        chr = data;
-                    }
-
-                    queue_chr = TRUE;
-
-                    /* LED control keys - ignore break codes */
-                    if (data == 0x3A) {
+                /* Special handling */
+                if (make_code == 0x58) {
+                    /* Caps lock */
+                    if (!is_break_code) {
                         kb_leds ^= KB_LED_CAPS;
                         update_leds = TRUE;
-                    } else if (data == 0x46) {
+
+                        /* Consume repeats to prevent toggling */
+                        state = KEY_STATE_UNTIL_BREAK;
+                    }
+
+                    xlat_code = 0x3A;
+                    queue_code = TRUE;
+
+                    break;
+                }
+
+                if (make_code == 0x7E) {
+                    /* Scroll lock */
+                    if (!is_break_code) {
                         kb_leds ^= KB_LED_SCROLL;
                         update_leds = TRUE;
-                    } else if (data == 0x45) {
+
+                        /* Consume repeats to prevent toggling */
+                        state = KEY_STATE_UNTIL_BREAK;
+                    }
+
+                    xlat_code = 0x46;
+                    queue_code = TRUE;
+
+                    break;
+                }
+
+                if (make_code == 0x77) {
+                    /* Num lock */
+                    if (!is_break_code) {
                         kb_leds ^= KB_LED_NUM;
                         update_leds = TRUE;
+
+                        /* Consume repeats to prevent toggling */
+                        state = KEY_STATE_UNTIL_BREAK;
                     }
-                } else {
-                    if (data == 0x37) {
-                        /* Numpad * - handle specially and push in an ASCII character instead of sending a key code */
+
+                    xlat_code = 0x45;
+                    queue_code = TRUE;
+
+                    break;
+                }
+
+                if (make_code == 0x7C) {
+                    /* Numpad * */
+                    if (!is_break_code) {
                         push_ascii_ikbdiorec('*');
                     }
+
+                    is_break_code = FALSE;
+
+                    return;
+                }
+
+                if (make_code == 0x71) {
+                    /* Numpad . */
+                    if (!is_break_code) {
+                        push_ascii_ikbdiorec('.');
+                    }
+
+                    is_break_code = FALSE;
+
+                    return;
                 }
             }
+    }
+
+    if (queue_code) {
+        if (is_break_code) {
+            /* Set MSb for break code */
+            xlat_code |= 0x80;
+
+            is_break_code = FALSE;
+        }
+
+        call_ikbdraw(xlat_code);
     }
 
     if (update_leds) {
         /* Set LEDs */
         (void)vt82c42_data_data_polled(0xED);
         (void)vt82c42_data_data_polled(kb_leds);
-    }
-
-    if (queue_chr) {
-        // KDEBUG(("vt82c42_handle_key(): ikbdraw(%02X)\n", chr | is_break));
-        call_ikbdraw(chr | is_break);
     }
 }
 
