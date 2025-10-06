@@ -1014,7 +1014,7 @@ vt82c42_handle_key(const UBYTE code)
                 }
             }
 
-            break;
+            return;
 
         default:
             if (code == 0xF0) {
