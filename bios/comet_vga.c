@@ -101,7 +101,7 @@ static const UWORD text_mode1_cfg[15] = {
     0x0019, 0x001A, 0x000F, 0x600F, 0x0000, 0x0000, 0x0050
 };
 
-/* Default 16 colour palette, as loaded into RAMDAC */
+/* Default 16 colour palette */
 static const UBYTE palette_16[48] = {
     0x00, 0x00, 0x00,   /* Black */
     0x00, 0x00, 0xAA,   /* Blue */
@@ -213,7 +213,7 @@ set_text_mode(void)
     CRTC_WR_CSR0(text_mode1_cfg[0]);
 }
 
-static void
+static void __attribute__((noinline))
 load_palette(void)
 {
     UWORD i;
@@ -298,7 +298,7 @@ interrupt_v_blank(void)
 }
 
 void
-ascii_out(int ch)
+ascii_out(const int ch)
 {
     if (!have_video) {
         /* Dont do any video operations if we dont have a card */
@@ -391,7 +391,7 @@ move_cursor(int x, int y)
 }
 
 void
-blank_out(int topx, int topy, int botx, int boty)
+blank_out(const int topx, const int topy, const int botx, const int boty)
 {
     if (!have_video) {
         /* Dont do any video operations if we dont have a card */
@@ -463,7 +463,7 @@ invert_cell(int x, int y)
 }
 
 void
-scroll_up(UWORD top_line)
+scroll_up(const UWORD top_line)
 {
     if (!have_video) {
         /* Dont do any video operations if we dont have a card */
@@ -512,7 +512,7 @@ scroll_up(UWORD top_line)
 }
 
 void
-scroll_down(UWORD start_line)
+scroll_down(const UWORD start_line)
 {
     if (!have_video) {
         /* Dont do any video operations if we dont have a card */
@@ -560,15 +560,15 @@ scroll_down(UWORD start_line)
 
 
 
-#define I8042_STATUS_OBF 0x01
-#define I8042_STATUS_IBF 0x02
-#define I8042_STATUS_MS_DATA 0x20
+#define VT82C42_STATUS_OBF 0x01
+#define VT82C42_STATUS_IBF 0x02
+#define VT82C42_STATUS_MS_DATA 0x20
 
-#define I8042_CMD_KB_OBF_INT 0x01
-#define I8042_CMD_MS_OBF_INT 0x02
-#define I8042_CMD_KB_DISABLE 0x10
-#define I8042_CMD_MS_DISABLE 0x20
-#define I8042_CMD_PC_COMPAT 0   /* 0x40 to enable scan code translation */
+#define VT82C42_CMD_KB_OBF_INT 0x01
+#define VT82C42_CMD_MS_OBF_INT 0x02
+#define VT82C42_CMD_KB_DISABLE 0x10
+#define VT82C42_CMD_MS_DISABLE 0x20
+#define VT82C42_CMD_PC_COMPAT 0     /* 0x40 to enable scan code translation */
 
 #define KB_LED_SCROLL 0x01
 #define KB_LED_NUM 0x02
@@ -588,13 +588,19 @@ static void vt82c42_write_wait(UBYTE data, UBYTE reg);
 static UBYTE vt82c42_cmd_data_polled(UBYTE cmd);
 static UBYTE vt82c42_data_data_polled(UBYTE data);
 static UBYTE vt82c42_data_polled(void);
+static BOOL vt82c42_data_polled_timeout(UBYTE *data);
 static UBYTE vt82c42_send_device_cmd(enum VT82C42_port port, UBYTE cmd);
 static UBYTE vt82c42_get_cmd_byte(void);
 static void vt82c42_set_cmd_byte(UBYTE cmd);
+static BOOL device_keyboard_init(void);
 static BOOL device_keyboard_reset(void);
 static void device_keyboard_led_animate(void);
+static BOOL device_mouse_init(void);
+static BOOL device_mouse_reset(void);
+static BOOL device_mouse_configure(void);
 static void interrupt_vt82c42(void);
 static void vt82c42_handle_key(UBYTE code);
+static void vt82c42_handle_mouse(UBYTE code);
 
 static void
 vt82c42_write_wait(const UBYTE data, const UBYTE reg)
@@ -604,7 +610,7 @@ vt82c42_write_wait(const UBYTE data, const UBYTE reg)
     /* Wait until input buffer empty */
     do {
         val = I8042_RD(COMET_VGA_I8042_CMD);
-    } while (val & I8042_STATUS_IBF);
+    } while (val & VT82C42_STATUS_IBF);
 
     /* Send the command */
     I8042_WR(data, reg);
@@ -621,7 +627,7 @@ vt82c42_cmd_data_polled(const UBYTE cmd)
     /* Wait for the response by polling the OBF flag of the status register */
     do {
         val = I8042_RD(COMET_VGA_I8042_CMD);
-    } while (!(val & I8042_STATUS_OBF));
+    } while (!(val & VT82C42_STATUS_OBF));
 
     /* Return the value from the data register */
     val = I8042_RD(COMET_VGA_I8042_DATA);
@@ -640,7 +646,7 @@ vt82c42_data_data_polled(const UBYTE data)
     /* Wait for the response by polling the OBF flag of the status register */
     do {
         val = I8042_RD(COMET_VGA_I8042_CMD);
-    } while (!(val & I8042_STATUS_OBF));
+    } while (!(val & VT82C42_STATUS_OBF));
 
     /* Return the value from the data register */
     val = I8042_RD(COMET_VGA_I8042_DATA);
@@ -656,12 +662,37 @@ vt82c42_data_polled(void)
     /* Wait for the response by polling the OBF flag of the status register */
     do {
         val = I8042_RD(COMET_VGA_I8042_CMD);
-    } while (!(val & I8042_STATUS_OBF));
+    } while (!(val & VT82C42_STATUS_OBF));
 
     /* Return the value from the data register */
     val = I8042_RD(COMET_VGA_I8042_DATA);
 
     return val;
+}
+
+static BOOL
+vt82c42_data_polled_timeout(UBYTE *data)
+{
+    UBYTE val;
+    LONG timer;
+
+    /* Set a timeout for how long we will wait for a response */
+    timer = hz_200 + 20;
+
+    /* Wait for the response by polling the OBF flag of the status register */
+    do {
+        val = I8042_RD(COMET_VGA_I8042_CMD);
+    } while (!(val & VT82C42_STATUS_OBF) && hz_200 < timer);
+
+    if (hz_200 == timer) {
+        /* Timeout */
+        return FALSE;
+    }
+
+    /* Return the value from the data register */
+    *data = I8042_RD(COMET_VGA_I8042_DATA);
+
+    return TRUE;
 }
 
 static UBYTE
@@ -674,7 +705,7 @@ vt82c42_send_device_cmd(const enum VT82C42_port port, UBYTE cmd)
     while (retries--) {
         if (port == VT82C42_MS) {
             /* Will write to the mouse output port */
-            vt82c42_write_wait(0xD3, COMET_VGA_I8042_CMD);
+            vt82c42_write_wait(0xD4, COMET_VGA_I8042_CMD);
         }
 
         val = vt82c42_data_data_polled(cmd);
@@ -705,11 +736,6 @@ vt82c42_set_cmd_byte(const UBYTE cmd)
     vt82c42_write_wait(cmd, COMET_VGA_I8042_DATA);
 }
 
-
-
-
-
-
 void
 comet_vga_vt82c42_init(void)
 {
@@ -728,15 +754,17 @@ comet_vga_vt82c42_init(void)
 
     UBYTE data;
     UBYTE status;
+    BOOL kb_stat = FALSE;
+    BOOL ms_stat = FALSE;
 
     /* Disable keyboard and mouse interfaces, and inhibit interrupts */
-    vt82c42_set_cmd_byte(I8042_CMD_PC_COMPAT | I8042_CMD_MS_DISABLE | I8042_CMD_KB_DISABLE);
+    vt82c42_set_cmd_byte(VT82C42_CMD_PC_COMPAT | VT82C42_CMD_MS_DISABLE | VT82C42_CMD_KB_DISABLE);
 
     /* Flush the output buffer */
     for (;;) {
         status = I8042_RD(COMET_VGA_I8042_CMD);
 
-        if (status & I8042_STATUS_OBF) {
+        if (status & VT82C42_STATUS_OBF) {
             (void)I8042_RD(COMET_VGA_I8042_DATA);
             KDEBUG(("comet_vga_vt82c42_init(): flush\n"));
         } else {
@@ -770,15 +798,6 @@ comet_vga_vt82c42_init(void)
         return;
     }
 
-    /* Keyboard interface test */
-    data = vt82c42_cmd_data_polled(0xAB);
-
-    if (data != 0) {
-        KDEBUG(("comet_vga_vt82c42_init(): Keyboard interface test failed\n"));
-
-        return;
-    }
-
     /* Check fuse status */
     vt82c42_write_wait(0xC1, COMET_VGA_I8042_CMD);
     status = I8042_RD(COMET_VGA_I8042_CMD);
@@ -789,29 +808,57 @@ comet_vga_vt82c42_init(void)
         return;
     }
 
-    /* We have a viable controller and keyboard interface */
+    /* We have a viable controller */
     have_vt82c42 = TRUE;
 
-    /* Enable the keyboard interface */
-    vt82c42_write_wait(0xAE, COMET_VGA_I8042_CMD);
+    /* Initialise keyboard and mouse interfaces and devices */
+    kb_stat = device_keyboard_init();
+    ms_stat = device_mouse_init();
 
-    /* Reset keyboard */
-    if (device_keyboard_reset() != TRUE) {
-        KDEBUG(("comet_vga_vt82c42_init(): Keyboard reset failed\n"));
+    if (kb_stat == FALSE) {
+        /* Disable the keyboard interface because it is unused or errored */
+        vt82c42_write_wait(0xAD, COMET_VGA_I8042_CMD);
+    }
+
+    if (ms_stat == FALSE) {
+        /* Disable the mouse interface because it is unused or errored */
+        vt82c42_write_wait(0xA7, COMET_VGA_I8042_CMD);
+    }
+
+    if (kb_stat == FALSE && ms_stat == FALSE) {
+        KDEBUG(("comet_vga_vt82c42_init(): no peripherals, early exit\n"));
 
         return;
     }
 
-    /* Do a little LED animation :) */
-    device_keyboard_led_animate();
+    KDEBUG(("comet_vga_vt82c42_init(): viable peripherals: "));
 
-    /* Set up interrupt handler */
+    if (kb_stat == TRUE) {
+        KDEBUG(("keyboard "));
+    }
+
+    if (ms_stat == TRUE) {
+        KDEBUG(("mouse"));
+    }
+
+    KDEBUG(("\n"));
+
+    /* Enable interrupt sources in the controller */
+    data = vt82c42_get_cmd_byte();
+
+    if (kb_stat == TRUE) {
+        data |= VT82C42_CMD_KB_OBF_INT;
+    }
+
+    if (ms_stat == TRUE) {
+        data |= VT82C42_CMD_MS_OBF_INT;
+    }
+
+    vt82c42_set_cmd_byte(data);
+
+    /* Set up the interrupt handler and enable interruptor on the video card */
     PFVOID *v_blank = (PFVOID *)((COMET_VGA_VECTOR_BASE + COMET_VGA_KB_VECTOR) << 2);
     *v_blank = interrupt_vt82c42;
-
-    /* Enable interrupts */
-    data = vt82c42_get_cmd_byte();
-    vt82c42_set_cmd_byte(data | I8042_CMD_KB_OBF_INT);
 
     struct csr1 int_src = { .u16 = CRTC_RD_CSR1() };
     int_src.K_EN = 1;
@@ -819,22 +866,42 @@ comet_vga_vt82c42_init(void)
 }
 
 static BOOL
+device_keyboard_init(void)
+{
+    /* Keyboard interface test */
+    if (vt82c42_cmd_data_polled(0xAB) != 0) {
+        KDEBUG(("device_keyboard_init(): Keyboard interface test failed\n"));
+
+        return FALSE;
+    }
+
+    /* Enable the keyboard interface */
+    vt82c42_write_wait(0xAE, COMET_VGA_I8042_CMD);
+
+    /* Reset keyboard */
+    if (device_keyboard_reset() != TRUE) {
+        KDEBUG(("device_keyboard_init(): Keyboard reset failed - is a working keyboard connected?\n"));
+
+        return FALSE;
+    }
+
+    /* Do a little LED animation :) */
+    device_keyboard_led_animate();
+
+    return TRUE;
+}
+
+static BOOL
 device_keyboard_reset(void)
 {
-    UBYTE val;
-
     /* Send the keyboard reset command */
-    val = vt82c42_send_device_cmd(VT82C42_KB, 0xFF);
-
-    if (val != 0xFA) {
+    if (vt82c42_send_device_cmd(VT82C42_KB, 0xFF) != 0xFA) {
         /* Keyboard did not acknowledge reset command */
         return FALSE;
     }
 
-    /* Keyboard acknowledged the reset command, it should also indicate whether the reset was successful */
-    val = vt82c42_data_polled();
-
-    if (val != 0xAA) {
+    /* Keyboard acknowledged the reset command, it should also indicate whether selft tests were successful */
+    if (vt82c42_data_polled() != 0xAA) {
         return FALSE;
     }
 
@@ -871,6 +938,93 @@ device_keyboard_led_animate(void)
     }
 }
 
+static BOOL
+device_mouse_init(void)
+{
+    /* Mouse interface test */
+    if (vt82c42_cmd_data_polled(0xA9) != 0) {
+        KDEBUG(("device_mouse_init(): Mouse interface test failed\n"));
+
+        return FALSE;
+    }
+
+    /* Enable the mouse interface */
+    vt82c42_write_wait(0xA8, COMET_VGA_I8042_CMD);
+
+    /* Reset mouse */
+    if (device_mouse_reset() != TRUE) {
+        KDEBUG(("device_mouse_init(): Mouse reset failed - is a working mouse connected?\n"));
+
+        return FALSE;
+    }
+
+    /* Configure mouse */
+    if (device_mouse_configure() != TRUE) {
+        KDEBUG(("device_mouse_init(): Mouse configuration failed\n"));
+
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL
+device_mouse_reset(void)
+{
+    BOOL success = FALSE;
+    UBYTE data;
+
+    /* Send the mouse reset command */
+    if (vt82c42_send_device_cmd(VT82C42_MS, 0xFF) != 0xFA) {
+        /* Mouse did not acknowledge reset command */
+        return FALSE;
+    }
+
+    /* Mouse acknowledged the reset command, it should also indicate whether selft tests were successful */
+    if (vt82c42_data_polled() != 0xAA) {
+        return FALSE;
+    }
+
+    /* Finally, the mouse should send an ID to indicate that the device is a mouse */
+    success = vt82c42_data_polled_timeout(&data);
+
+    if (success == FALSE || data != 0) {
+        return FALSE;
+    }
+
+    /* Reset succeeded */
+    return TRUE;
+}
+
+static BOOL
+device_mouse_configure(void)
+{
+    /* Set the report rate */
+    if (vt82c42_send_device_cmd(VT82C42_MS, 0xF3) != 0xFA) {
+        return FALSE;
+    }
+
+    if (vt82c42_send_device_cmd(VT82C42_MS, 10) != 0xFA) {
+        return FALSE;
+    }
+
+    /* Set the resolution */
+    if (vt82c42_send_device_cmd(VT82C42_MS, 0xE8) != 0xFA) {
+        return FALSE;
+    }
+
+    if (vt82c42_send_device_cmd(VT82C42_MS, 1) != 0xFA) {
+        return FALSE;
+    }
+
+    /* Enable reporting to start getting updates */
+    if (vt82c42_send_device_cmd(VT82C42_MS, 0xF4) != 0xFA) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 static void __attribute__((interrupt))
 interrupt_vt82c42(void)
 {
@@ -883,29 +1037,14 @@ interrupt_vt82c42(void)
         status = I8042_RD(COMET_VGA_I8042_CMD);
         data = I8042_RD(COMET_VGA_I8042_DATA);
 
-        if (status & I8042_STATUS_MS_DATA) {
+        if (status & VT82C42_STATUS_MS_DATA) {
             /* Ignore mouse data for now */
+            vt82c42_handle_mouse(data);
         } else {
             vt82c42_handle_key(data);
         }
-
-        for (;;) {
-            status = I8042_RD(COMET_VGA_I8042_CMD);
-
-            if (status & I8042_STATUS_OBF) {
-                data = I8042_RD(COMET_VGA_I8042_DATA);
-            } else {
-                break;
-            }
-        }
     }
 }
-
-
-
-
-
-
 
 enum key_state {
     KEY_STATE_DEFAULT = 0,
@@ -917,8 +1056,6 @@ enum key_state {
 static void
 vt82c42_handle_key(const UBYTE code)
 {
-    KDEBUG(("vt82c42_handle_key(): code=%02X\n", code));
-
     static enum key_state state = KEY_STATE_DEFAULT;
     const UBYTE make_code = code & 0x7F;
     static BOOL is_break_code = FALSE;
@@ -1147,6 +1284,45 @@ vt82c42_handle_key(const UBYTE code)
         /* Set LEDs */
         (void)vt82c42_data_data_polled(0xED);
         (void)vt82c42_data_data_polled(kb_leds);
+    }
+}
+
+static void
+vt82c42_handle_mouse(const UBYTE code)
+{
+    static UBYTE pktctr = 0;
+    static UBYTE pkt[6] = {0};
+
+    /* Collect up to 3 bytes of packet data */
+    if (pktctr < 3) {
+        pkt[pktctr++] = code;
+    }
+
+    /* Once 3 bytes have been collected, process the packet - form a new packet to be queued with EmuTOS */
+    if (pktctr == 3) {
+        pkt[3] = 0xF8;                      /* MOUSE_REL_POS_REPORT */
+        pkt[3] |= (pkt[0] & 0x01) << 1;     /* LEFT_BUTTON_DOWN */
+        pkt[3] |= (pkt[0] & 0x02) >> 1;     /* RIGHT_BUTTON_DOWN */
+        pkt[4] = pkt[1];                    /* X rel */
+        pkt[5] = -pkt[2];                   /* Y rel */
+
+        /* Overflow handling */
+        if (pkt[0] & 0x40) {
+            /* X overflow */
+            pkt[4] = pkt[0] & 0x10 ? -128 : 127;
+        }
+
+        if (pkt[0] & 0x80) {
+            /* X overflow */
+            pkt[5] = pkt[0] & 0x20 ? -128 : 127;
+        }
+
+        // KDEBUG(("Mouse: X=%i Y=%i B=%1X\n", (SBYTE)pkt[4], (SBYTE)pkt[5], pkt[0] & 0x03));
+
+        call_mousevec((SBYTE *)&pkt[3]);
+
+        /* Reset packet counter */
+        pktctr = 0;
     }
 }
 
