@@ -25,6 +25,38 @@
 #define I8042_RD(r) (*(volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_I8042 + (r)))
 #define I8042_WR(v, r) (*(volatile UBYTE *)(COMET_VGA_BASE + COMET_VGA_I8042 + (r)) = (v))
 
+/* Keyboard/mouse controller Status register bit masks */
+#define VT82C42_STATUS_OBF 0x01
+#define VT82C42_STATUS_IBF 0x02
+#define VT82C42_STATUS_MS_DATA 0x20
+
+/* Keyboard/mouse controller Command register bit masks */
+#define VT82C42_CMD_KB_OBF_INT 0x01
+#define VT82C42_CMD_MS_OBF_INT 0x02
+#define VT82C42_CMD_KB_DISABLE 0x10
+#define VT82C42_CMD_MS_DISABLE 0x20
+#define VT82C42_CMD_PC_COMPAT 0     /* Set to 0x40 to enable scan code translation */
+
+/* Keyboard LED bit masks */
+#define KB_LED_SCROLL 0x01
+#define KB_LED_NUM 0x02
+#define KB_LED_CAPS 0x04
+
+/* Used to specify which port a byte of data is destined for on the keyboard/mouse controller */
+enum VT82C42_port {
+    VT82C42_KB = 0,
+    VT82C42_MS = 1
+};
+
+/* Keyboard state machine states */
+enum key_state {
+    KEY_STATE_DEFAULT = 0,
+    KEY_STATE_UNTIL_BREAK,
+    KEY_STATE_ESCAPE,
+    KEY_STATE_PAUSE_BREAK
+};
+
+/* Struct of the CSR0 register in the CRTC */
 struct csr0 {
     union {
         struct {
@@ -53,6 +85,7 @@ struct csr0 {
     };
 };
 
+/* Struct of the CSR1 register in the CRTC */
 struct csr1 {
     union {
         struct {
@@ -95,7 +128,7 @@ static const UWORD palette_map[] = {
     PAL_LTBLUE, PAL_LTMAGENTA, PAL_LTCYAN, PAL_BLACK
 };
 
-/* Text mode - 80x25 screen with 9x16 characters, 16fg, 8bg, blinking text */
+/* Text mode configuration - 80x25 screen with 9x16 characters, 16fg, 8bg, blinking text */
 static const UWORD text_mode1_cfg[15] = {
     0x8187, (0x0200 | COMET_VGA_VECTOR_BASE), 0x0063, 0x0050, 0x0053, 0x0F06, 0x001B, 0x0002,
     0x0019, 0x001A, 0x000F, 0x600F, 0x0000, 0x0000, 0x0050
@@ -135,12 +168,33 @@ static UWORD cursor_pos = 0;
 static BOOL have_video = FALSE;
 static BOOL have_vt82c42 = FALSE;
 
+/* Holds the state of the keyboard LEDs, which can also be used to determine whether Num/Caps/Scroll locks have been
+ * engaged or not */
+static UBYTE kb_leds = 0;
+
 /* Forward decls */
 static void init_linea_vars(void);
 static void set_text_mode(void);
 static void load_palette(void);
 static void load_font1(void);
 static void interrupt_v_blank(void);
+static void vt82c42_write_wait(UBYTE data, UBYTE reg);
+static UBYTE vt82c42_cmd_data_polled(UBYTE cmd);
+static UBYTE vt82c42_data_data_polled(UBYTE data);
+static UBYTE vt82c42_data_polled(void);
+static BOOL vt82c42_data_polled_timeout(UBYTE *data);
+static UBYTE vt82c42_send_device_cmd(enum VT82C42_port port, UBYTE cmd);
+static UBYTE vt82c42_get_cmd_byte(void);
+static void vt82c42_set_cmd_byte(UBYTE cmd);
+static BOOL device_keyboard_init(void);
+static BOOL device_keyboard_reset(void);
+static void device_keyboard_led_animate(void);
+static BOOL device_mouse_init(void);
+static BOOL device_mouse_reset(void);
+static BOOL device_mouse_configure(void);
+static void interrupt_vt82c42(void);
+static void vt82c42_handle_key(UBYTE code);
+static void vt82c42_handle_mouse(UBYTE code);
 
 void
 comet_vga_screen_init(void)
@@ -557,50 +611,7 @@ scroll_down(const UWORD start_line)
     }
 }
 
-
-
-
-#define VT82C42_STATUS_OBF 0x01
-#define VT82C42_STATUS_IBF 0x02
-#define VT82C42_STATUS_MS_DATA 0x20
-
-#define VT82C42_CMD_KB_OBF_INT 0x01
-#define VT82C42_CMD_MS_OBF_INT 0x02
-#define VT82C42_CMD_KB_DISABLE 0x10
-#define VT82C42_CMD_MS_DISABLE 0x20
-#define VT82C42_CMD_PC_COMPAT 0     /* 0x40 to enable scan code translation */
-
-#define KB_LED_SCROLL 0x01
-#define KB_LED_NUM 0x02
-#define KB_LED_CAPS 0x04
-
-enum VT82C42_port {
-    VT82C42_KB = 0,
-    VT82C42_MS = 1
-};
-
-/* Holds the state of the LEDs, which can also be used to determine whether Num/Caps/Scroll locks have been engaged or
- * not */
-static UBYTE kb_leds = 0;
-
-/* Forward decls */
-static void vt82c42_write_wait(UBYTE data, UBYTE reg);
-static UBYTE vt82c42_cmd_data_polled(UBYTE cmd);
-static UBYTE vt82c42_data_data_polled(UBYTE data);
-static UBYTE vt82c42_data_polled(void);
-static BOOL vt82c42_data_polled_timeout(UBYTE *data);
-static UBYTE vt82c42_send_device_cmd(enum VT82C42_port port, UBYTE cmd);
-static UBYTE vt82c42_get_cmd_byte(void);
-static void vt82c42_set_cmd_byte(UBYTE cmd);
-static BOOL device_keyboard_init(void);
-static BOOL device_keyboard_reset(void);
-static void device_keyboard_led_animate(void);
-static BOOL device_mouse_init(void);
-static BOOL device_mouse_reset(void);
-static BOOL device_mouse_configure(void);
-static void interrupt_vt82c42(void);
-static void vt82c42_handle_key(UBYTE code);
-static void vt82c42_handle_mouse(UBYTE code);
+/* Some ideas borrowed from https://github.com/ddraig68k/emutos */
 
 static void
 vt82c42_write_wait(const UBYTE data, const UBYTE reg)
@@ -696,7 +707,7 @@ vt82c42_data_polled_timeout(UBYTE *data)
 }
 
 static UBYTE
-vt82c42_send_device_cmd(const enum VT82C42_port port, UBYTE cmd)
+vt82c42_send_device_cmd(const enum VT82C42_port port, const UBYTE cmd)
 {
     UBYTE retries = 10;
     UBYTE val;
@@ -1045,13 +1056,6 @@ interrupt_vt82c42(void)
         }
     }
 }
-
-enum key_state {
-    KEY_STATE_DEFAULT = 0,
-    KEY_STATE_UNTIL_BREAK,
-    KEY_STATE_ESCAPE,
-    KEY_STATE_PAUSE_BREAK
-};
 
 static void
 vt82c42_handle_key(const UBYTE code)
